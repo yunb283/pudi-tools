@@ -10,6 +10,7 @@ import { initGifView } from './gif-view-page.js';
 import { initVideoConvert } from './video-convert-page.js';
 import { initAudioConvert } from './audio-convert-page.js';
 import { initVideoDownload } from './video-download-page.js';
+import { initPdfPage } from './pdf-page.js';
 import { initSysInfo } from './sysinfo-page.js';
 import { initShutdown } from './shutdown-page.js';
 import { initFlipClock } from './clock-page.js';
@@ -17,7 +18,6 @@ import {
   onGlobalDrop,
   isSupportedName,
   isTauri,
-  CONVERT_EXTS,
   TEXTURE_EXTS,
   GIF_SOURCE_EXTS,
   GIF_ONLY_EXTS,
@@ -117,6 +117,8 @@ const pageGifView = document.getElementById('page-gifview');
 const pageVideo = document.getElementById('page-video');
 const pageAudio = document.getElementById('page-audio');
 const pageDl = document.getElementById('page-dl');
+const tabPdf = document.getElementById('tab-pdf');
+const pagePdf = document.getElementById('page-pdf');
 const pageClock = document.getElementById('page-clock');
 const pageRename = document.getElementById('page-rename');
 const pageSysInfo = document.getElementById('page-sysinfo');
@@ -218,6 +220,7 @@ const gvApi = initGifView({ view: gvView });
 const videoApi = initVideoConvert();
 const audioApi = initAudioConvert();
 const dlApi = initVideoDownload();
+const pdfApi = initPdfPage();
 initSysInfo();
 const shutdownApi = initShutdown();
 initFlipClock();
@@ -243,6 +246,7 @@ const tabs = [
   ['video', tabVideo, pageVideo, []],
   ['audio', tabAudio, pageAudio, []],
   ['dl', tabDl, pageDl, []],
+  ['pdf', tabPdf, pagePdf, []],
   ['clock', tabClock, pageClock, []],
   ['rename', tabRename, pageRename, []],
   ['sysinfo', tabSysInfo, pageSysInfo, []],
@@ -293,6 +297,7 @@ tabGifView.addEventListener('click', () => showTab('gifview'));
 tabVideo.addEventListener('click', () => showTab('video'));
 tabAudio.addEventListener('click', () => showTab('audio'));
 tabDl.addEventListener('click', () => showTab('dl'));
+tabPdf.addEventListener('click', () => showTab('pdf'));
 tabClock.addEventListener('click', () => showTab('clock'));
 tabRename.addEventListener('click', () => showTab('rename'));
 tabSysInfo.addEventListener('click', () => showTab('sysinfo'));
@@ -629,29 +634,67 @@ function buildTlList() {
 // 拖的是列表，页签行跟着换；拖完存下来，下次打开还是这个次序
 let listDrag = null;
 
+// 按下把手：先记下每行现在的位置。
+// 插入位置按这份「按下时的快照」算，不按会动的实时位置——指针来回微动时落点才不会跟着跳
+function startListDrag(row, e) {
+  const rows = [...tlList.querySelectorAll('.tlist-item')];
+  const rects = rows.map((r) => r.getBoundingClientRect());
+  const idx = rows.indexOf(row);
+  listDrag = {
+    row,
+    idx,
+    rects,
+    others: rows.filter((r) => r !== row),
+    otherRects: rects.filter((_, i) => i !== idx),
+    height: rects[idx].height,
+    grabOffset: e.clientY - rects[idx].top,
+    startY: e.clientY,
+    dropIndex: -1,
+    moved: false,
+  };
+  // 按下就弹起来：放大 + 投影，过渡写在 CSS 里
+  row.classList.add('dragging');
+  window.addEventListener('pointermove', onListDragMove);
+  window.addEventListener('pointerup', endListDrag);
+  window.addEventListener('pointercancel', endListDrag);
+}
+
 function onListDragMove(e) {
-  if (!listDrag) return;
-  const dy = e.clientY - listDrag.y;
-  if (!listDrag.moved) {
-    if (Math.abs(dy) < DRAG_BREAK) return;
-    listDrag.moved = true;
-    listDrag.row.classList.add('grabbed');
+  const d = listDrag;
+  if (!d) return;
+  if (!d.moved) {
+    if (Math.abs(e.clientY - d.startY) < DRAG_BREAK) return;
+    d.moved = true;
     tlList.classList.add('reordering');
   }
-  // 指针落在哪一行中间线之上，就把拖着的行插到那一行前面
-  let ref = null;
-  for (const row of tlList.querySelectorAll('.tlist-item')) {
-    if (row === listDrag.row) continue;
-    const b = row.getBoundingClientRect();
-    if (e.clientY < b.top + b.height / 2) {
-      ref = row;
-      break;
-    }
+  // 整行跟着鼠标走：抓取点保持在指下（用独立的 translate 属性，放大不会把它一起缩放）
+  d.row.style.translate = `0 ${e.clientY - d.grabOffset - d.rects[d.idx].top}px`;
+  const j = dropIndexAt(d, e.clientY);
+  if (j !== d.dropIndex) {
+    d.dropIndex = j;
+    applyDropShift(d, j);
   }
-  if (ref) {
-    if (listDrag.row.nextElementSibling !== ref) tlList.insertBefore(listDrag.row, ref);
-  } else if (listDrag.row !== tlList.lastElementChild) {
-    tlList.appendChild(listDrag.row);
+}
+
+// 指针落在第几行下面 → 插到第几位（去掉被拖的那行之后的序号）
+function dropIndexAt(d, y) {
+  for (let i = 0; i < d.otherRects.length; i++) {
+    const r = d.otherRects[i];
+    if (y < r.top + r.height / 2) return i;
+  }
+  return d.otherRects.length;
+}
+
+// 让位：插到点后面的行往下挪一行，原本在它后面、现在被让到前面的行往上挪一行
+function shiftFor(d, i, j) {
+  if (i < d.idx) return i >= j ? d.height : 0;
+  return i >= j ? 0 : -d.height;
+}
+
+function applyDropShift(d, j) {
+  for (let i = 0; i < d.others.length; i++) {
+    const shift = shiftFor(d, i, j);
+    d.others[i].style.translate = shift ? `0 ${shift}px` : '0 0px';
   }
 }
 
@@ -663,8 +706,37 @@ function endListDrag() {
   listDrag = null;
   if (!d) return;
   tlList.classList.remove('reordering');
-  d.row.classList.remove('grabbed');
-  if (!d.moved) return;
+  if (!d.moved) {
+    // 只是按了一下把手：原样弹回去
+    d.row.classList.remove('dragging');
+    d.row.style.translate = '';
+    return;
+  }
+  // 记住它现在停在屏幕上的哪儿
+  const beforeRect = d.row.getBoundingClientRect();
+  // 别的行：让位后的落点已经是最终落点，位移直接抹掉（不补间，否则会先跳一下）
+  for (const row of d.others) {
+    row.style.transition = 'none';
+    row.style.translate = '0 0px';
+  }
+  // 被拖的行挪到最终位置
+  const after = d.dropIndex < d.others.length ? d.others[d.dropIndex] : null;
+  if (after) tlList.insertBefore(d.row, after);
+  else tlList.appendChild(d.row);
+  // 先把它按回刚才的位置，再补间回槽位，同时缩回原样
+  d.row.style.transition = 'none';
+  d.row.style.translate = '0 0px';
+  const slotRect = d.row.getBoundingClientRect();
+  d.row.style.translate = `0 ${beforeRect.top - slotRect.top}px`;
+  d.row.getBoundingClientRect(); // 强制回流，让浏览器认下这个起点
+  d.row.style.transition =
+    'translate 240ms var(--ease-out), scale 200ms var(--ease-out), box-shadow 180ms ease';
+  d.row.style.translate = '0 0px';
+  d.row.classList.remove('dragging');
+  setTimeout(() => {
+    for (const row of d.others) row.style.transition = '';
+    d.row.style.transition = '';
+  }, 320);
   commitListOrder();
 }
 
@@ -677,8 +749,13 @@ function commitListOrder() {
   }
   sortTabsByDom();
   saveTabOrder();
-  // 手动拖过就是自定义次序
-  if (sortMode !== 'custom') setSortMode('custom', '已改为自定义顺序');
+  // 手动拖过就是自定义次序（列表已经是这个次序了，不用重建，免得打断落位动画）
+  if (sortMode !== 'custom') {
+    sortMode = 'custom';
+    saveSortMode();
+    syncSortMenu();
+    setTlNote('已改为自定义顺序');
+  }
 }
 
 // 只有按住把手才能拖：不然会跟勾选框抢点击
@@ -688,10 +765,7 @@ tlList.addEventListener('pointerdown', (e) => {
   const row = grip.closest('.tlist-item');
   if (!row) return;
   e.preventDefault();
-  listDrag = { row, y: e.clientY, moved: false };
-  window.addEventListener('pointermove', onListDragMove);
-  window.addEventListener('pointerup', endListDrag);
-  window.addEventListener('pointercancel', endListDrag);
+  startListDrag(row, e);
 });
 
 // ===== 排序方式菜单 =====
@@ -888,14 +962,19 @@ themeBtn.addEventListener('click', (ev) => {
 });
 
 onGlobalDrop((entries) => {
-  // 音频转换页优先吃音频/视频
-  if (!pageAudio.classList.contains('hidden')) {
-    audioApi.loadEntry(entries[0]);
+  // PDF 转图片页：一次只吃一个 PDF
+  if (!pagePdf.classList.contains('hidden')) {
+    pdfApi.addEntries(entries);
     return;
   }
-  // 视频转换页优先吃视频
+  // 音频转换页优先吃音频/视频（批量模式下整批收进待转换列表）
+  if (!pageAudio.classList.contains('hidden')) {
+    audioApi.addEntries(entries);
+    return;
+  }
+  // 视频转换页优先吃视频（批量模式下整批收进待转换列表）
   if (!pageVideo.classList.contains('hidden')) {
-    videoApi.loadEntry(entries[0]);
+    videoApi.addEntries(entries);
     return;
   }
   // 几个动画/贴图处理页各有一份白名单，谁在前台就交给谁（白名单外也递过去，由页面给提示）
@@ -913,8 +992,8 @@ onGlobalDrop((entries) => {
   }
   if (!pageConvert.classList.contains('hidden')) {
     // 白名单外的文件也交给转换页，由它给出「不支持的格式」提示
-    const ok = entries.filter((e) => isSupportedName(e.name, CONVERT_EXTS));
-    convApi.loadEntry(ok[0] || entries[0]);
+    // 批量模式下整批收进待转换列表
+    convApi.addEntries(entries);
     return;
   }
   const supported = entries.filter((e) => isSupportedName(e.name));

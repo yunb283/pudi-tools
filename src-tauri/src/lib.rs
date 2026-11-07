@@ -348,6 +348,18 @@ async fn list_files(dir: String) -> Result<Vec<String>, String> {
     .map_err(|e| format!("任务执行异常：{e}"))?
 }
 
+// 建目录（已经存在也返回成功）。PDF 转图片要在 PDF 旁边新建一个同名文件夹，
+// 导出前先把这层目录建出来，写文件时就不用再判断目录在不在。
+#[tauri::command]
+async fn make_dir(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+        Ok(path)
+    })
+    .await
+    .map_err(|e| format!("任务执行异常：{e}"))?
+}
+
 // ===================== 视频转换（内置 ffmpeg） =====================
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -2208,6 +2220,7 @@ pub fn run() {
             decode_heif,
             file_size,
             list_files,
+            make_dir,
             open_path,
             locate_ffmpeg,
             ffprobe_video,

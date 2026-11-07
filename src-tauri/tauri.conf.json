@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "图像工具箱",
   "mainBinaryName": "图像工具箱",
-  "version": "0.1.2",
+  "version": "0.1.8",
   "identifier": "com.spritetools.seqtool",
   "build": {
     "frontendDist": "../src",
-    "beforeBuildCommand": "powershell -ExecutionPolicy Bypass -File scripts\\download-deps.ps1"
+    "beforeBuildCommand": "node scripts/prepare-build.mjs"
   },
   "app": {
     "withGlobalTauri": true,

@@ -68,13 +68,17 @@ export function canvasToBlob(canvas, type, quality) {
   });
 }
 
-export async function encodeCanvas(canvas, ext) {
+export async function encodeCanvas(canvas, ext, quality = 0.92) {
   if (ext === 'tga') {
     return encodeTga(canvasToImageData(canvas));
   }
   if (ext === 'jpg' || ext === 'jpeg') {
     // JPEG 无透明通道，canvas 里的透明像素会被合成成黑色
-    const blob = await canvasToBlob(canvas, 'image/jpeg', 0.92);
+    const blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  if (ext === 'webp') {
+    const blob = await canvasToBlob(canvas, 'image/webp', quality);
     return new Uint8Array(await blob.arrayBuffer());
   }
   const blob = await canvasToBlob(canvas, 'image/png');

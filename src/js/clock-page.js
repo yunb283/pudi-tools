@@ -8,7 +8,8 @@ import { isTauri } from "./platform.js";
 const $ = (id) => document.getElementById(id);
 // 缩放默认值从 80 改成 100 时换了键名：沿用旧键的话，他之前存下来的 80 会一直压住新默认值
 const KEY = "fcSettings.v2";
-const FLIP_MS = { flat: 200, "3d": 520 };
+// 翻页时长：太短会像「啪」地一下换掉，太长又跟不上秒针，取个中间值
+const FLIP_MS = { flat: 300, "3d": 560 };
 // 数码管默认偏红：色轮上的角度是色相、半径是饱和度
 const LED_HUE = 6;
 const LED_SAT = 100;
@@ -170,11 +171,13 @@ export function initFlipClock() {
       return;
     }
     c.children[2].firstChild.textContent = prev;
-    c.children[3].firstChild.textContent = ch;
+    // 扁平：上下两半一起朝外压掉，下半也得是旧数字；
+    // 立体：下半是从下往上翻开的，得放新数字
+    c.children[3].firstChild.textContent = st.style === "flat" ? prev : ch;
     c.classList.remove("fl");
     void c.offsetWidth; // 不强制回流，同一帧里再挂 .fl 不会重启动画
     c.classList.add("fl");
-    setTimeout(() => c.classList.remove("fl"), (FLIP_MS[st.style] || 200) + 60);
+    setTimeout(() => c.classList.remove("fl"), (FLIP_MS[st.style] || 300) + 60);
   }
 
   function setSeg(d, ch) {
@@ -358,7 +361,16 @@ export function initFlipClock() {
   applyFlags();
   applyColor();
   render();
-  setInterval(render, 200);
+  // 每秒对齐一次：翻页动画正好在秒数跳的那一刻开始。
+  // 固定间隔轮询会晚半拍才翻，看着像「数字先跳一下、然后才翻」，不丝滑
+  function scheduleRender() {
+    const wait = 1000 - (Date.now() % 1000) + 12;
+    setTimeout(() => {
+      render();
+      scheduleRender();
+    }, wait);
+  }
+  scheduleRender();
 
   for (const b of styleBtns) {
     b.addEventListener("click", () => {
@@ -394,7 +406,7 @@ export function initFlipClock() {
     });
     range.addEventListener("change", persist);
   }
-  bindSize(scaleIn, scaleNum, "scale", 40, 160);
+  bindSize(scaleIn, scaleNum, "scale", 40, 200);
   bindSize(brightIn, brightNum, "bright", 20, 100);
 
   bgBox.addEventListener("change", () => {

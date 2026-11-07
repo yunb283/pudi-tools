@@ -869,6 +869,34 @@ export function initVideoConvert() {
   modeSingleBtn.addEventListener('click', () => toggleBatchMode(false));
   modeBatchBtn.addEventListener('click', () => toggleBatchMode(true));
 
+  // 拖进来一批文件：批量模式整批收进待转换列表，单个模式只取第一个
+  function addEntries(entries) {
+    if (batchMode) {
+      addBatchEntries(entries);
+      return;
+    }
+    if (entries.length) loadEntry(entries[0]);
+  }
+
+  function addBatchEntries(entries) {
+    if (converting) return;
+    const existing = new Set(batchFiles.map((f) => f.path || f.name));
+    let added = 0;
+    for (const e of entries) {
+      if (!isVideoName(e.name)) continue;
+      const key = e.path || e.name;
+      if (existing.has(key)) continue;
+      existing.add(key);
+      batchFiles.push({ path: e.path, name: e.name, status: 'queue', percent: 0 });
+      added++;
+    }
+    if (!added) return;
+    renderBatchList();
+    updateSummary();
+    convertBtn.disabled = !batchFiles.length || converting;
+    setStatus(`已加入 ${added} 个文件到待转换列表`);
+  }
+
   batchAddBtn.addEventListener('click', async () => {
     if (converting) return;
     const entries = await pickImages(true, VIDEO_EXTS, { title: '选择视频文件' });
@@ -1377,5 +1405,6 @@ export function initVideoConvert() {
 
   return {
     loadEntry,
+    addEntries,
   };
 }

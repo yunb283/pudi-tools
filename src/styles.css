@@ -719,6 +719,7 @@ body {
 }
 
 .tlist-item {
+  position: relative; /* 拖起来的那行要压在别人上面 */
   display: flex;
   align-items: center;
   gap: 6px;
@@ -726,6 +727,11 @@ body {
   border-radius: 5px;
   color: var(--text-modal);
   font-size: 12px;
+  /* 位移补间：拖动时跟手，落下时补间回槽位 */
+  transition:
+    translate 90ms linear,
+    scale 200ms var(--ease-out),
+    box-shadow 180ms ease;
 }
 
 .tlist-item label {
@@ -760,18 +766,24 @@ body {
   opacity: 0.9;
 }
 
-/* 拖动中的那一行:压暗,让位给它要插进去的地方 */
-.tlist-item.grabbed {
-  opacity: 0.45;
+/* 弹起来的那一行：抬起、放大、投影；颜色不发灰，只是比周围亮一点 */
+.tlist-item.dragging {
+  z-index: 3;
+  scale: 1.04;
   background: var(--bg-modal-head);
+  box-shadow:
+    0 0 0 1px var(--accent-tint-2),
+    0 8px 18px rgba(0, 0, 0, 0.5);
+  cursor: grabbing;
+}
+
+.tlist-item.dragging .tlist-grip {
+  opacity: 1;
+  cursor: grabbing;
 }
 
 .tlist-list.reordering {
   user-select: none;
-}
-
-.tlist-list.reordering .tlist-grip {
-  cursor: grabbing;
 }
 
 /* 拦住「最后一个页签也要关」这类操作时,理由写在这里 */
@@ -913,6 +925,18 @@ body {
   flex: 1;
   min-height: 120px;
   position: relative;
+}
+
+/* 图片格式转换页：单个/批量两个模式各自要撑满左栏，
+   否则里面的 .canvas-wrap 的 flex:1 失效，预览区会塌成一条。
+   gap 要跟 .panel 一样，不然工具条会贴着预览窗口、两个按钮会挤在一起 */
+#conv-single-wrap,
+#conv-batch-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 6px;
+  min-height: 0;
 }
 
 /* 只有 GIF 结果预览需要裁边:它是被 CSS transform 放大的那张图.
@@ -2392,12 +2416,101 @@ select:disabled {
 
 .batch-file-row {
   display: grid;
-  grid-template-columns: 1fr 140px 58px 24px;
+  /* 文件名保底 96px，进度条可以被挤窄：窗口窄的时候先保名字，不然只看得见「clip」 */
+  grid-template-columns: minmax(96px, 1fr) minmax(40px, 140px) 44px 22px;
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
   font-size: 12px;
   border-bottom: 1px solid var(--border-modal-head);
+}
+
+/* ===== PDF 转图片页 ===== */
+.pdf-file-name {
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 预览窗口：页面大过窗口时可以滚动。用 margin:auto 而不是 justify-content:center，
+   否则页面太宽时左边那一截滚不到 */
+.pdf-prev-wrap {
+  display: flex;
+  overflow: auto;
+  background: var(--bg-surface2);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.pdf-prev-wrap canvas {
+  position: static;
+  inset: auto;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  flex: none;
+  margin: auto;
+  border-radius: 2px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.pdf-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* 翻页控件：放在预览窗口正下方，跟别的页面的按钮一样走正常排版 */
+.pdf-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* PDF 页右栏要能真缩到三分之一宽：表格里的控件不许按内容把面板撑开 */
+#page-pdf .form-grid select,
+#page-pdf .form-grid input,
+#page-pdf .size-row input {
+  min-width: 0;
+  width: 100%;
+}
+
+#page-pdf .size-row .btn {
+  flex: 0 0 auto;
+}
+
+/* 页码输入框和「跳转」绑在一起，别被 flex 拆开 */
+.pdf-page-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.pdf-pager input[type='number'] {
+  width: 72px;
+}
+
+.pdf-dir-row {
+  display: flex;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.pdf-dir-row .btn {
+  flex: 1;
+}
+
+/* 预览缩放：放在标题行，不压着页面内容 */
+.pdf-zoom {
+  max-width: 110px;
+  flex: 0 0 auto;
 }
 
 .batch-file-row:nth-child(odd) {
@@ -2412,18 +2525,18 @@ select:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  /* 用 block 而不是 flex：flex 里文字是一个匿名项，省略号不会生效，名字会被硬切断 */
+  display: block;
 }
 
 .batch-file-name .status-tag {
   display: inline-block;
+  vertical-align: middle;
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 3px;
   white-space: nowrap;
-  flex-shrink: 0;
+  margin-right: 6px;
   font-weight: 600;
 }
 .status-tag.tag-queue {
@@ -2716,11 +2829,18 @@ select:disabled {
 }
 
 /* ===== 翻页时钟页 ===== */
+/* 舞台按自己的宽度当容器：时钟要塞得进左右边框，放大到 200% 也不能顶出去 */
+.fc-host {
+  container-type: inline-size;
+}
+
 /* 舞台固定黑底：这一页是摆在桌面上看的，不跟浅色皮肤走 */
 .fc-stage {
   --scale: 100;
   --bright: 100;
-  --ch: calc(118px * var(--scale) / 100);
+  /* 卡高跟着缩放走，但不许超过舞台宽度能放下的尺寸：
+     时钟总宽约 4.6 个卡高（6 张卡 + 冒号 + 卡间距），超了就按宽度压回去 */
+  --ch: min(calc(118px * var(--scale) / 100), calc((100cqw - 22px) / 4.6));
   --cw: calc(var(--ch) * 0.7);
   --led: calc(var(--ch) * 0.62);
   --dur: 200ms;
@@ -2972,6 +3092,8 @@ select:disabled {
   font-size: calc(var(--ch) * 0.7);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  /* 卡面永远是深色的，数字也固定白色：浅色皮肤下不能跟着页面变深色 */
+  color: #f2f2f2;
 }
 
 .fc-top {
@@ -3008,6 +3130,26 @@ select:disabled {
   transform-origin: center top;
   animation: fcBot var(--dur) cubic-bezier(0, 0.55, 0.55, 1) both;
   animation-delay: calc(var(--dur) / 2);
+}
+
+/* 扁平：上下两半一起朝外压掉，中间不会空一拍，数字是一路化过去的。
+   （立体才是先折上半、再翻下半，两段接得上） */
+.fc-stage[data-style='flat'] .fc-ft {
+  animation: fcTop var(--dur) cubic-bezier(0.45, 0.05, 0.3, 1) both;
+}
+
+.fc-stage[data-style='flat'] .fc-fb {
+  transform-origin: center bottom;
+  animation: fcBotDown var(--dur) cubic-bezier(0.45, 0.05, 0.3, 1) both;
+}
+
+@keyframes fcBotDown {
+  from {
+    transform: rotateX(0deg);
+  }
+  to {
+    transform: rotateX(90deg);
+  }
 }
 
 @keyframes fcTop {

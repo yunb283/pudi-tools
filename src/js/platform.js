@@ -97,6 +97,12 @@ export function isVideoName(name) {
   return VIDEO_EXTS.includes((name.split('.').pop() || '').toLowerCase());
 }
 
+// PDF 转图片页只收 PDF
+export const PDF_EXTS = ['pdf'];
+export function isPdfName(name) {
+  return PDF_EXTS.includes((name.split('.').pop() || '').toLowerCase());
+}
+
 function naturalKey(s) {
   return s
     .split(/(\d+)/)
@@ -311,6 +317,14 @@ export async function resolveSaveDir(sourceDir) {
   if (sourceDir) return sourceDir;
   if (isTauri) return await window.__TAURI__.core.invoke('pick_dir');
   return null;
+}
+
+// 建目录（已存在也当成功）。PDF 转图片要在 PDF 旁边新建同名文件夹，导出前先建好。
+// 浏览器环境没有文件系统，返回 null 让调用方退回下载。
+export async function makeDir(path) {
+  if (!isTauri || !path) return null;
+  await window.__TAURI__.core.invoke('make_dir', { path });
+  return path;
 }
 
 // dir 为 null 且不在 Tauri 时退化为浏览器下载；Tauri 下返回 null 表示取消
