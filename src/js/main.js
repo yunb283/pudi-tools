@@ -265,6 +265,8 @@ function syncTabIndicator() {
 }
 
 function showTab(which) {
+  // 切过的页签记一笔：「按最近使用」靠它排
+  markUsed(which);
   // 跳到被工具列表收起来的页签（比如关窗被拦下后跳自动关机），先把它放回来，
   // 否则切过去只有一页内容、行上却找不到对应的页签
   unhideTab(which);
@@ -326,8 +328,61 @@ tabsRow.addEventListener(
 // 这里不用 setPointerCapture：capture 一旦设在这行上，浏览器会把 click 也派发到这行，
 // 页签就再也收不到点击（窄窗口下等于点不动页签）；改成拖动期间临时挂到 window 上监听
 const ORDER_KEY = 'tabOrder';
+const SORT_KEY = 'tabSortMode';
+const RECENT_KEY = 'tabLastUsed';
 const DRAG_BREAK = 6;
 let drag = null;
+
+// 代码里声明的次序：「恢复默认顺序」按它排，和用户后来怎么拖无关
+const DEFAULT_ORDER = tabs.map((t) => t[0]);
+
+// 排序方式：custom 自定义(拖出来的次序) / name 按名称 / recent 按最近使用 / default 恢复默认
+let sortMode = readSortMode();
+
+function readSortMode() {
+  try {
+    const m = localStorage.getItem(SORT_KEY);
+    return ['custom', 'name', 'recent', 'default'].includes(m) ? m : 'custom';
+  } catch (e) {
+    return 'custom';
+  }
+}
+
+function saveSortMode() {
+  try {
+    localStorage.setItem(SORT_KEY, sortMode);
+  } catch (e) {
+    // 写不进去就算了，下次还是按上次的次序来
+  }
+}
+
+// 哪些页签最近切过、什么时候切的：「按最近使用」靠它排
+const lastUsed = readLastUsed();
+
+function readLastUsed() {
+  try {
+    const o = JSON.parse(localStorage.getItem(RECENT_KEY) || '{}');
+    return o && typeof o === 'object' ? o : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function markUsed(name) {
+  lastUsed[name] = Date.now();
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(lastUsed));
+  } catch (e) {
+    // 记不住就在本次会话里生效
+  }
+}
+
+// 名称排序交给 Intl：中文按拼音排，不用自己维护拼音表
+const nameCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
+
+function tabName(t) {
+  return t[1].textContent.trim();
+}
 
 function readTabOrder() {
   try {
@@ -352,11 +407,37 @@ function sortTabsByDom() {
   tabs.sort((a, b) => (a[1].compareDocumentPosition(b[1]) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 }
 
+// 当前排序方式下，页签应该是什么次序
+function orderedTabs() {
+  const arr = tabs.slice();
+  if (sortMode === 'name') {
+    arr.sort((a, b) => nameCollator.compare(tabName(a), tabName(b)));
+  } else if (sortMode === 'recent') {
+    // 没用过的排后面；同一档按名称排，次序才不会乱跳
+    arr.sort(
+      (a, b) =>
+        (lastUsed[b[0]] || 0) - (lastUsed[a[0]] || 0) ||
+        nameCollator.compare(tabName(a), tabName(b))
+    );
+  } else if (sortMode === 'default') {
+    arr.sort((a, b) => DEFAULT_ORDER.indexOf(a[0]) - DEFAULT_ORDER.indexOf(b[0]));
+  } else {
+    // 自定义：先走存下来的次序，没存过的接在后面
+    const saved = readTabOrder();
+    arr.sort((a, b) => {
+      const ia = saved.indexOf(a[0]);
+      const ib = saved.indexOf(b[0]);
+      if (ia === ib) return 0;
+      if (ia < 0) return 1;
+      if (ib < 0) return -1;
+      return ia - ib;
+    });
+  }
+  return arr;
+}
+
 function applyTabOrder() {
-  const saved = readTabOrder();
-  const seq = saved.map((n) => tabs.find((t) => t[0] === n));
-  for (const t of tabs) if (!saved.includes(t[0])) seq.push(t);
-  for (const t of seq) tabsRow.appendChild(t[1]);
+  for (const t of orderedTabs()) tabsRow.appendChild(t[1]);
   sortTabsByDom();
 }
 
@@ -418,6 +499,8 @@ function endTabDrag() {
     sortTabsByDom();
     saveTabOrder();
     syncTabIndicator();
+    // 手动拖过就是自定义次序，别再被「按名称」这类排序盖回去
+    if (sortMode !== 'custom') setSortMode('custom', '已改为自定义顺序');
   }
 }
 
@@ -458,6 +541,8 @@ const tlPop = document.getElementById('tool-list-pop');
 const tlList = document.getElementById('tlist-list');
 const tlNote = document.getElementById('tlist-note');
 const tlShowAll = document.getElementById('tlist-show-all');
+const tlSort = document.getElementById('tlist-sort');
+const tlMenu = document.getElementById('tlist-menu');
 const TL_KEY = 'hiddenTabs';
 const hiddenTabs = new Set(readHiddenTabs());
 
@@ -505,11 +590,19 @@ function unhideTab(name) {
 // 面板每次展开都照当前状态重建，省掉「勾了一个要回头同步另一处」的簿记
 function buildTlList() {
   tlList.innerHTML = '';
-  for (const [name, tabEl] of tabs) {
-    const row = document.createElement('label');
+  for (const [name, tabEl] of orderedTabs()) {
+    const row = document.createElement('div');
     row.className = 'tlist-item';
+    row.dataset.tab = name;
+
+    // 拖动把手：列表里按住它上下拖，页签行跟着换位置
+    const grip = document.createElement('span');
+    grip.className = 'tlist-grip';
+    grip.title = '拖动调整顺序';
+
     const box = document.createElement('input');
     box.type = 'checkbox';
+    box.id = `tl-chk-${name}`;
     box.checked = !hiddenTabs.has(name);
     box.addEventListener('change', () => {
       if (!box.checked && tabs.length - hiddenTabs.size <= 1) {
@@ -524,20 +617,143 @@ function buildTlList() {
       saveHiddenTabs();
       applyHiddenTabs();
     });
-    const label = document.createElement('span');
+    const label = document.createElement('label');
+    label.htmlFor = box.id;
     label.textContent = tabEl.textContent;
-    row.append(box, label);
+    row.append(grip, box, label);
     tlList.appendChild(row);
   }
 }
+
+// ===== 列表里拖动：换页签的次序 =====
+// 拖的是列表，页签行跟着换；拖完存下来，下次打开还是这个次序
+let listDrag = null;
+
+function onListDragMove(e) {
+  if (!listDrag) return;
+  const dy = e.clientY - listDrag.y;
+  if (!listDrag.moved) {
+    if (Math.abs(dy) < DRAG_BREAK) return;
+    listDrag.moved = true;
+    listDrag.row.classList.add('grabbed');
+    tlList.classList.add('reordering');
+  }
+  // 指针落在哪一行中间线之上，就把拖着的行插到那一行前面
+  let ref = null;
+  for (const row of tlList.querySelectorAll('.tlist-item')) {
+    if (row === listDrag.row) continue;
+    const b = row.getBoundingClientRect();
+    if (e.clientY < b.top + b.height / 2) {
+      ref = row;
+      break;
+    }
+  }
+  if (ref) {
+    if (listDrag.row.nextElementSibling !== ref) tlList.insertBefore(listDrag.row, ref);
+  } else if (listDrag.row !== tlList.lastElementChild) {
+    tlList.appendChild(listDrag.row);
+  }
+}
+
+function endListDrag() {
+  window.removeEventListener('pointermove', onListDragMove);
+  window.removeEventListener('pointerup', endListDrag);
+  window.removeEventListener('pointercancel', endListDrag);
+  const d = listDrag;
+  listDrag = null;
+  if (!d) return;
+  tlList.classList.remove('reordering');
+  d.row.classList.remove('grabbed');
+  if (!d.moved) return;
+  commitListOrder();
+}
+
+// 列表现在的次序就是新的页签次序：写回页签行并存下来
+function commitListOrder() {
+  const names = [...tlList.querySelectorAll('.tlist-item')].map((r) => r.dataset.tab);
+  for (const name of names) {
+    const t = tabs.find((x) => x[0] === name);
+    if (t) tabsRow.appendChild(t[1]);
+  }
+  sortTabsByDom();
+  saveTabOrder();
+  // 手动拖过就是自定义次序
+  if (sortMode !== 'custom') setSortMode('custom', '已改为自定义顺序');
+}
+
+// 只有按住把手才能拖：不然会跟勾选框抢点击
+tlList.addEventListener('pointerdown', (e) => {
+  const grip = e.target instanceof Element ? e.target.closest('.tlist-grip') : null;
+  if (!grip) return;
+  const row = grip.closest('.tlist-item');
+  if (!row) return;
+  e.preventDefault();
+  listDrag = { row, y: e.clientY, moved: false };
+  window.addEventListener('pointermove', onListDragMove);
+  window.addEventListener('pointerup', endListDrag);
+  window.addEventListener('pointercancel', endListDrag);
+});
+
+// ===== 排序方式菜单 =====
+const SORT_NOTE = {
+  custom: '拖动列表左侧把手即可调整顺序',
+  name: '已按名称（拼音）排序',
+  recent: '已按最近使用排序',
+  default: '已恢复默认顺序',
+};
+
+// 换排序方式：页签行、列表、菜单三处一起对齐
+function setSortMode(mode, note) {
+  sortMode = mode;
+  saveSortMode();
+  applyTabOrder();
+  syncTabIndicator();
+  buildTlList();
+  syncSortMenu();
+  setTlNote(note || '');
+}
+
+// 菜单里的勾跟着当前方式走
+function syncSortMenu() {
+  for (const item of tlMenu.querySelectorAll('.tlist-menu-item')) {
+    item.setAttribute('aria-checked', String(item.dataset.mode === sortMode));
+  }
+}
+
+function openSortMenu(open) {
+  tlMenu.hidden = !open;
+  tlSort.setAttribute('aria-expanded', String(open));
+  if (open) syncSortMenu();
+}
+
+tlSort.addEventListener('click', () => openSortMenu(tlMenu.hidden));
+tlMenu.addEventListener('click', (e) => {
+  const item = e.target instanceof Element ? e.target.closest('.tlist-menu-item') : null;
+  if (!item) return;
+  openSortMenu(false);
+  setSortMode(item.dataset.mode, SORT_NOTE[item.dataset.mode]);
+});
+// 点面板里菜单以外的地方，菜单先收起来（点「排序」钮本身不算，它自己管开关）
+tlPop.addEventListener('pointerdown', (e) => {
+  if (tlMenu.hidden) return;
+  const t = e.target instanceof Element ? e.target : null;
+  if (t && (t.closest('.tlist-menu') || t.closest('#tlist-sort'))) return;
+  openSortMenu(false);
+});
 
 function openTl(open) {
   tlPop.hidden = !open;
   tlBtn.classList.toggle('on', open);
   tlBtn.setAttribute('aria-expanded', String(open));
   if (open) {
+    // 「按最近使用」这类次序会随使用变化，展开时按最新状态重排一次
+    applyTabOrder();
+    syncTabIndicator();
     buildTlList();
+    syncSortMenu();
     setTlNote('');
+  } else {
+    openSortMenu(false);
   }
 }
 
@@ -553,7 +769,9 @@ tlShowAll.addEventListener('click', () => {
 document.addEventListener('pointerdown', (e) => {
   if (tlPop.hidden) return;
   const t = e.target;
-  if (t instanceof Element && t.closest('.tlist-wrap')) return;
+  // 目标不是元素（合成事件落在 document 上）时不当作「点了外面」：
+  // 否则面板刚展开就被收掉，用户看着像按钮失灵
+  if (!(t instanceof Element) || t.closest('.tlist-wrap')) return;
   openTl(false);
 });
 document.addEventListener('keydown', (e) => {

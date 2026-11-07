@@ -604,7 +604,7 @@ body {
   left: 0;
   /* 压在页签行(0/1)之上、模态框(100)与右键菜单(1000)之下 */
   z-index: 90;
-  width: 178px;
+  width: 228px;
   padding: 6px;
   background: var(--bg-modal);
   border: 1px solid var(--border-modal);
@@ -624,11 +624,93 @@ body {
   color: var(--text-title);
   font-size: 12px;
   font-weight: 600;
+  /* 右侧塞了两枚钮,标题不能被挤得换行 */
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* 头部右侧两枚钮:排序、全部显示 */
+.tlist-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tlist-pop .btn.small {
   padding: 3px 8px;
   font-size: 12px;
+}
+
+/* 「排序」钮后面带个小箭头,提示点开是选方式 */
+.tlist-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tlist-sort-btn::after {
+  content: '';
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: 0.65;
+}
+
+.tlist-sort-btn[aria-expanded='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 排序方式菜单:贴着「排序」钮弹出来,盖在列表上面 */
+.tlist-menu {
+  position: absolute;
+  top: 30px;
+  right: 4px;
+  z-index: 3;
+  min-width: 158px;
+  padding: 4px;
+  background: var(--bg-modal);
+  border: 1px solid var(--border-modal);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.tlist-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-modal);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tlist-menu-item:hover {
+  background: var(--bg-modal-head);
+}
+
+/* 勾:当前选的方式才亮 */
+.tlist-menu-tick {
+  flex: 0 0 auto;
+  opacity: 0;
+  color: var(--accent);
+}
+
+.tlist-menu-item[aria-checked='true'] .tlist-menu-tick {
+  opacity: 1;
+}
+
+.tlist-menu-hint {
+  margin-left: auto;
+  color: var(--muted-b0);
+  font-size: 11px;
 }
 
 .tlist-list {
@@ -639,11 +721,14 @@ body {
 .tlist-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 5px 6px;
   border-radius: 5px;
   color: var(--text-modal);
   font-size: 12px;
+}
+
+.tlist-item label {
   cursor: pointer;
 }
 
@@ -654,6 +739,39 @@ body {
 .tlist-item input {
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* 拖动把手:按住它上下拖 = 换页签次序 */
+.tlist-grip {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 14px;
+  color: var(--muted-b0);
+  background-image: radial-gradient(currentColor 1px, transparent 1.2px);
+  background-size: 5px 4px;
+  background-position: 1px 2px;
+  opacity: 0.45;
+  cursor: grab;
+  touch-action: none;
+  transition: opacity 120ms ease;
+}
+
+.tlist-item:hover .tlist-grip {
+  opacity: 0.9;
+}
+
+/* 拖动中的那一行:压暗,让位给它要插进去的地方 */
+.tlist-item.grabbed {
+  opacity: 0.45;
+  background: var(--bg-modal-head);
+}
+
+.tlist-list.reordering {
+  user-select: none;
+}
+
+.tlist-list.reordering .tlist-grip {
+  cursor: grabbing;
 }
 
 /* 拦住「最后一个页签也要关」这类操作时,理由写在这里 */

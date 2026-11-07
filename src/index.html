@@ -70,12 +70,121 @@
         >
           <div class="tlist-head">
             <span class="tlist-title">显示的页签</span>
-            <button class="btn small" id="tlist-show-all" type="button">
-              全部显示
-            </button>
+            <div class="tlist-head-btns">
+              <button
+                class="btn small tlist-sort-btn"
+                id="tlist-sort"
+                type="button"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                排序
+              </button>
+              <button class="btn small" id="tlist-show-all" type="button">
+                全部显示
+              </button>
+            </div>
           </div>
           <div class="tlist-list" id="tlist-list"></div>
           <div class="tlist-note" id="tlist-note"></div>
+          <!-- 排序方式:自定义(拖动调整) / 按名称 / 按最近使用 / 恢复默认 -->
+          <div class="tlist-menu" id="tlist-menu" hidden role="menu">
+            <button
+              class="tlist-menu-item"
+              type="button"
+              data-mode="custom"
+              role="menuitemradio"
+              aria-checked="false"
+            >
+              <svg
+                class="tlist-menu-tick"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m5 13 4 4L19 7" />
+              </svg>
+              <span class="tlist-menu-text">自定义顺序</span>
+              <span class="tlist-menu-hint">拖动调整</span>
+            </button>
+            <button
+              class="tlist-menu-item"
+              type="button"
+              data-mode="name"
+              role="menuitemradio"
+              aria-checked="false"
+            >
+              <svg
+                class="tlist-menu-tick"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m5 13 4 4L19 7" />
+              </svg>
+              <span class="tlist-menu-text">按名称排序</span>
+              <span class="tlist-menu-hint">拼音</span>
+            </button>
+            <button
+              class="tlist-menu-item"
+              type="button"
+              data-mode="recent"
+              role="menuitemradio"
+              aria-checked="false"
+            >
+              <svg
+                class="tlist-menu-tick"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m5 13 4 4L19 7" />
+              </svg>
+              <span class="tlist-menu-text">按最近使用</span>
+              <span class="tlist-menu-hint">新在前</span>
+            </button>
+            <button
+              class="tlist-menu-item"
+              type="button"
+              data-mode="default"
+              role="menuitemradio"
+              aria-checked="false"
+            >
+              <svg
+                class="tlist-menu-tick"
+                viewBox="0 0 24 24"
+                width="12"
+                height="12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m5 13 4 4L19 7" />
+              </svg>
+              <span class="tlist-menu-text">恢复默认顺序</span>
+            </button>
+          </div>
         </div>
       </div>
       <div class="tb-actions">
