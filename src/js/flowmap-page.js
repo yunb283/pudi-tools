@@ -134,7 +134,6 @@ export function initFlowmap() {
   let pointer = null;
   let lastPoint = null;
   let spaceDown = false;
-  let sDown = false;
   let shiftDown = false;
 
   // ---------- 撤销（tile 快照） ----------
@@ -342,45 +341,62 @@ export function initFlowmap() {
     if (opBefore) markTiles(x0, y0, x1, y1, opBefore);
 
     if (mode === 'blur') {
-      // 柔化：取笔刷区域的 5×5 盒式均值，再按同一衰减掩码混回去
-      const w = x1 - x0;
-      const h = y1 - y0;
-      const src = new Float32Array(w * h * 2);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const p = ((y0 + y) * W + x0 + x) * 2;
-          src[(y * w + x) * 2] = data[p];
-          src[(y * w + x) * 2 + 1] = data[p + 1];
+      // 柔化：核半径跟着笔刷走（原来固定 5×5，笔刷 40px 时几乎抹不动），
+      // 用积分图一次算出 2D 盒式均值，核再大也不会把每像素的开销带上去。
+      // 混合量与「流动强度」解绑：旧写法直接乘 5/100 的渐进笔刷系数，
+      // 中心只混进 3% 的邻域均值，看不出效果；现在最弱也有约 0.45。
+      // 再往中性色轻轻拉一点，方向本来就均匀的区域也能看出被抹淡。
+      const k = clamp(Math.round(radius * 0.3), 3, 20);
+      const halo = k + 1;
+      const bw = x1 - x0 + halo * 2;
+      const bh = y1 - y0 + halo * 2;
+      const iw = bw + 1;
+      const ir = new Float64Array(iw * (bh + 1));
+      const ig = new Float64Array(iw * (bh + 1));
+      const xs = new Int32Array(bw);
+      const ys = new Int32Array(bh);
+      for (let i = 0; i < bw; i++) xs[i] = clamp(x0 - halo + i, 0, W - 1);
+      for (let i = 0; i < bh; i++) ys[i] = clamp(y0 - halo + i, 0, H - 1);
+      for (let py = 0; py < bh; py++) {
+        let rowR = 0;
+        let rowG = 0;
+        const rowBase = ys[py] * W;
+        const cur = (py + 1) * iw;
+        const prev = py * iw;
+        for (let px = 0; px < bw; px++) {
+          const p = (rowBase + xs[px]) * 2;
+          rowR += data[p];
+          rowG += data[p + 1];
+          ir[cur + px + 1] = ir[prev + px + 1] + rowR;
+          ig[cur + px + 1] = ig[prev + px + 1] + rowG;
         }
       }
+      const n = (2 * k + 1) * (2 * k + 1);
+      const amount = clamp(0.45 + strength * 1.4, 0.45, 1);
+      const fade = 0.12;
       for (let y = y0; y < y1; y++) {
         const dy = y + 0.5 - cy;
+        const py = y - y0 + halo;
+        const ya = (py - k) * iw;
+        const yb = (py + k + 1) * iw;
         for (let x = x0; x < x1; x++) {
           const dx = x + 0.5 - cx;
           const d2 = dx * dx + dy * dy;
           if (d2 >= r2) continue;
           const f = 1 - d2 / r2;
-          const a = f * f * strength;
+          // 中心到 f≈0.45 都是满强度，只在笔刷最外圈羽化，效果才不会局限在圆心一小块
+          const a = Math.min(1, f * 2.2) * amount;
           if (a <= 0) continue;
-          let sr = 0;
-          let sg = 0;
-          let n = 0;
-          for (let j = -2; j <= 2; j++) {
-            const yy = y - y0 + j;
-            if (yy < 0 || yy >= h) continue;
-            for (let i = -2; i <= 2; i++) {
-              const xx = x - x0 + i;
-              if (xx < 0 || xx >= w) continue;
-              const q = (yy * w + xx) * 2;
-              sr += src[q];
-              sg += src[q + 1];
-              n++;
-            }
-          }
-          if (!n) continue;
+          const px = x - x0 + halo;
+          const xa = px - k;
+          const xb = px + k + 1;
+          const sumR = ir[yb + xb] - ir[ya + xb] - ir[yb + xa] + ir[ya + xa];
+          const sumG = ig[yb + xb] - ig[ya + xb] - ig[yb + xa] + ig[ya + xa];
+          const avgR = sumR / n + (NEUTRAL - sumR / n) * fade;
+          const avgG = sumG / n + (NEUTRAL - sumG / n) * fade;
           const p = (y * W + x) * 2;
-          data[p] = Math.round(data[p] + (sr / n - data[p]) * a);
-          data[p + 1] = Math.round(data[p + 1] + (sg / n - data[p + 1]) * a);
+          data[p] = Math.round(data[p] + (avgR - data[p]) * a);
+          data[p + 1] = Math.round(data[p + 1] + (avgG - data[p + 1]) * a);
         }
       }
     } else {
@@ -763,17 +779,6 @@ export function initFlowmap() {
       e.preventDefault();
       return;
     }
-    if (e.button === 0 && sDown) {
-      pointer = {
-        mode: 'adjust',
-        sx: s.x,
-        sy: s.y,
-        radius: num('fm-radius-num'),
-        strength: num('fm-strength-num'),
-      };
-      e.preventDefault();
-      return;
-    }
     if (e.button !== 0 && e.button !== 2) return;
     const mode = e.button === 2 ? 'erase' : shiftDown ? 'blur' : tool;
     beginOp();
@@ -796,16 +801,6 @@ export function initFlowmap() {
     if (pointer.mode === 'pan') {
       view.ox = pointer.ox + (s.x - pointer.sx);
       view.oy = pointer.oy + (s.y - pointer.sy);
-      requestDraw();
-      return;
-    }
-    if (pointer.mode === 'adjust') {
-      const r = clamp(Math.round(pointer.radius + (s.x - pointer.sx) * 0.25), 5, 200);
-      const st = clamp(Math.round(pointer.strength - (s.y - pointer.sy) * 0.4), 1, 100);
-      $('fm-radius').value = String(r);
-      $('fm-radius-num').value = String(r);
-      $('fm-strength').value = String(st);
-      $('fm-strength-num').value = String(st);
       requestDraw();
       return;
     }
@@ -954,11 +949,14 @@ export function initFlowmap() {
     restoreParams(PREVIEW_DEFAULTS, '预览参数', $('fm-reset-preview'), '动画播放状态保持不变')
   );
 
+  // 按钮和快捷键共用同一处选中逻辑，免得两边的 .on 状态走偏
+  function selectTool(name) {
+    tool = name;
+    for (const b of $('fm-tool-row').querySelectorAll('.btn'))
+      b.classList.toggle('on', b.dataset.tool === name);
+  }
   for (const id of ['fm-tool-draw', 'fm-tool-erase', 'fm-tool-blur']) {
-    $(id).addEventListener('click', () => {
-      tool = $(id).dataset.tool;
-      for (const b of $('fm-tool-row').querySelectorAll('.btn')) b.classList.toggle('on', b === $(id));
-    });
+    $(id).addEventListener('click', () => selectTool($(id).dataset.tool));
   }
   $('fm-undo').addEventListener('click', undo);
   $('fm-redo').addEventListener('click', redo);
@@ -1134,36 +1132,38 @@ export function initFlowmap() {
   document.addEventListener('keydown', (e) => {
     if (typing(e) || page.classList.contains('hidden')) return;
     const k = e.key.toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && k === 'z') {
-      e.preventDefault();
-      if (e.shiftKey) redo();
-      else undo();
+    // Ctrl+Shift+Z 已按要求移除：带 Shift 的 Z 不再吃掉，也不做重做
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      if (k === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (k === 'y' && !e.shiftKey) {
+        e.preventDefault();
+        redo();
+      }
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && k === 'y') {
-      e.preventDefault();
-      redo();
-      return;
-    }
-    if (k === 's') sDown = true;
-    if (k === 'shift') shiftDown = true;
-    if (e.code === 'Space') {
+    if (k === 'b') {
+      selectTool('draw');
+      setStatus('工具：绘制流向（B）');
+    } else if (k === 'e') {
+      selectTool('erase');
+      setStatus('工具：擦除（E）');
+    } else if (k === 'f') {
+      fitView();
+    } else if (e.code === 'Space') {
       spaceDown = true;
       e.preventDefault();
     }
-    if (k === 'f') fitView();
-    if (e.key === '[' || e.key === ']') {
-      setBrushSize(num('fm-radius-num') + (e.key === '[' ? -5 : 5), true);
-    }
+    if (k === 'shift') shiftDown = true;
   });
   document.addEventListener('keyup', (e) => {
     const k = e.key.toLowerCase();
-    if (k === 's') sDown = false;
     if (k === 'shift') shiftDown = false;
     if (e.code === 'Space') spaceDown = false;
   });
   addEventListener('blur', () => {
-    spaceDown = sDown = shiftDown = false;
+    spaceDown = shiftDown = false;
     finishPointer();
   });
   window.addEventListener('themechange', syncThemeColors);

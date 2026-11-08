@@ -1986,10 +1986,7 @@
                 <label>小时格式</label>
                 <div class="seg-row" id="fc-fmt">
                   <button class="btn" type="button" data-fmt="12h">12h</button>
-                  <button class="btn" type="button" data-fmt="24h">24h</button>
-                  <button class="btn on" type="button" data-fmt="024h">
-                    024h
-                  </button>
+                  <button class="btn on" type="button" data-fmt="24h">24h</button>
                 </div>
                 <label>缩放比例</label>
                 <div class="dual-row">
@@ -2053,6 +2050,11 @@
                       >秒</span
                     ></label
                   >
+                  <label class="chk inline"
+                    ><input type="checkbox" id="fc-labels" checked /><span
+                      >时分秒</span
+                    ></label
+                  >
                 </div>
                 <label>正计时</label>
                 <div class="seg-row">
@@ -2110,7 +2112,8 @@
               </div>
               <div class="fc-note">
                 本页只负责显示，不碰系统电源；倒计时到点只停在
-                00:00:00。要定时关机走「自动关机」页。
+                00:00:00。要定时关机走「自动关机」页。<br />
+                全屏后按钮自动隐藏，按 Esc 退出全屏。
               </div>
             </div>
           </div>
@@ -2312,7 +2315,7 @@
         </div>
         <div class="help-label">
           左键拖动绘制流向（渐进叠加，不覆盖旧笔触）；右键拖动擦除；中键 / 空格拖动平移，滚轮缩放；<b>Ctrl + 滚轮调笔刷大小</b>。<br />
-          按住 S 拖动调笔刷（横向大小、纵向强度），[ / ] 微调大小，Shift 临时柔化，F 适配窗口；Ctrl+Z / Ctrl+Shift+Z 撤销重做。拖入图片作为底图。
+          <b>B 绘制 / E 擦除</b>，Shift 临时柔化，F 适配窗口；Ctrl+Z 撤销、Ctrl+Y 重做。拖入图片作为底图。
         </div>
       </div>
 

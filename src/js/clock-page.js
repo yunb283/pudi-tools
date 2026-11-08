@@ -8,8 +8,9 @@ import { isTauri } from "./platform.js";
 const $ = (id) => document.getElementById(id);
 // 缩放默认值从 80 改成 100 时换了键名：沿用旧键的话，他之前存下来的 80 会一直压住新默认值
 const KEY = "fcSettings.v2";
-// 翻页时长：太短会像「啪」地一下换掉，太长又跟不上秒针，取个中间值
-const FLIP_MS = { flat: 300, "3d": 560 };
+// 翻页时长 = 整张页走完前半程（折旧上半）+ 后半程（落新下半）的总时间。
+// 参考动图有效翻页约 450ms；立体档稍慢一点让透视看得清，都要短于 1 秒不然会追不上秒针。
+const FLIP_MS = { flat: 420, "3d": 560 };
 // 数码管默认偏红：色轮上的角度是色相、半径是饱和度
 const LED_HUE = 6;
 const LED_SAT = 100;
@@ -56,6 +57,7 @@ export function initFlipClock() {
   const brightNum = $("fc-bright-num");
   const bgBox = $("fc-bg");
   const secBox = $("fc-sec");
+  const labelsBox = $("fc-labels");
   const swBtn = $("fc-sw");
   const wheel = $("fc-wheel");
   const knob = $("fc-knob");
@@ -65,11 +67,12 @@ export function initFlipClock() {
 
   const st = {
     style: "flat",
-    fmt: "024h",
+    fmt: "24h",
     scale: 100,
     bright: 100,
     bg: true,
     sec: true,
+    labels: true,
     ledH: LED_HUE,
     ledS: LED_SAT,
     mode: "clock",
@@ -87,6 +90,9 @@ export function initFlipClock() {
   } catch (e) {
     // 读不到就用默认值
   }
+  // 旧版存过 024h（补零的 24 小时制）；选项删掉后统一归到 24h，
+  // 否则两个按钮都不亮，小时还会掉回不补零的写法
+  if (st.fmt !== "12h") st.fmt = "24h";
 
   function persist() {
     try {
@@ -99,6 +105,7 @@ export function initFlipClock() {
           bright: st.bright,
           bg: st.bg,
           sec: st.sec,
+          labels: st.labels,
           ledH: st.ledH,
           ledS: st.ledS,
         }),
@@ -159,25 +166,40 @@ export function initFlipClock() {
     return d;
   }
 
+  // 一张翻页卡里四层的关系（children 顺序见 makeCard）：
+  //   [0] .fc-top 静止上半 = 新数字，被翻页正面盖住，折多少露多少
+  //   [1] .fc-bot 静止下半 = 旧数字，整段动画都不变，落地那一刻才换
+  //   [2] .fc-ft  翻页正面 = 旧数字上半，绕中线向下折 0° → -90°
+  //   [3] .fc-fb  翻页背面 = 新数字下半，从 90° 落到 0°，由中线往下盖住旧下半
+  // 旧写法把静止下半一开始就写成新数字，于是上下两半显示成两个不同的数；
+  // 扁平档还让下半翻的是旧数字、方向朝外，跟参考动图正好相反。
   function setCard(c, ch) {
     if (c._v === ch) return;
     const prev = c._v;
     c._v = ch;
-    c.children[0].firstChild.textContent = ch;
-    c.children[1].firstChild.textContent = ch;
+    const top = c.children[0].firstChild;
+    const bot = c.children[1].firstChild;
+    const ft = c.children[2].firstChild;
+    const fb = c.children[3].firstChild;
+    top.textContent = ch;
     if (prev === null) {
-      c.children[2].firstChild.textContent = ch;
-      c.children[3].firstChild.textContent = ch;
+      // 首次填充只是把卡片摆好，不做动画
+      bot.textContent = ft.textContent = fb.textContent = ch;
       return;
     }
-    c.children[2].firstChild.textContent = prev;
-    // 扁平：上下两半一起朝外压掉，下半也得是旧数字；
-    // 立体：下半是从下往上翻开的，得放新数字
-    c.children[3].firstChild.textContent = st.style === "flat" ? prev : ch;
+    bot.textContent = prev; // 动画期间下半一直是旧数字
+    ft.textContent = prev; // 正面：旧上半
+    fb.textContent = ch; // 背面：新下半（扁平 / 立体两档一致）
+    clearTimeout(c._flipTimer); // 秒针或秒表连续翻页时别让上一次的落地回调插队
     c.classList.remove("fl");
     void c.offsetWidth; // 不强制回流，同一帧里再挂 .fl 不会重启动画
     c.classList.add("fl");
-    setTimeout(() => c.classList.remove("fl"), (FLIP_MS[st.style] || 300) + 60);
+    const dur = FLIP_MS[st.style] || FLIP_MS.flat;
+    c._flipTimer = setTimeout(() => {
+      c.classList.remove("fl");
+      bot.textContent = ch; // 背面已经盖满，此时换成新数字不会闪
+      c._flipTimer = 0;
+    }, dur + 30);
   }
 
   function setSeg(d, ch) {
@@ -234,7 +256,7 @@ export function initFlipClock() {
       h = h % 12 || 12;
     }
     return {
-      h: st.fmt === "24h" ? String(h) : pad(h),
+      h: pad(h),
       m: pad(d.getMinutes()),
       s: pad(d.getSeconds()),
       mer,
@@ -269,7 +291,7 @@ export function initFlipClock() {
 
   function applyStyle() {
     stage.dataset.style = st.style;
-    stage.style.setProperty("--dur", (FLIP_MS[st.style] || 0) + "ms");
+    stage.style.setProperty("--dur", (FLIP_MS[st.style] || FLIP_MS.flat) + "ms");
     for (const b of styleBtns)
       b.classList.toggle("on", b.dataset.style === st.style);
     // 色轮调的是数码管的发光色，翻页卡没有这个概念，不在的时候别留着占一行
@@ -287,9 +309,12 @@ export function initFlipClock() {
 
   function applyFlags() {
     stage.classList.toggle("nobg", !st.bg);
+    // 时钟下方的「时 / 分 / 秒」小字：隐藏时连分组的下间距一起收掉，卡片才会居中
+    stage.classList.toggle("nolbl", !st.labels);
     for (const b of fmtBtns) b.classList.toggle("on", b.dataset.fmt === st.fmt);
     bgBox.checked = st.bg;
     secBox.checked = st.sec;
+    labelsBox.checked = st.labels;
   }
 
   // 色相=角度（12 点方向是 0，顺时针增大），饱和度=半径
@@ -419,6 +444,11 @@ export function initFlipClock() {
     render();
     persist();
   });
+  labelsBox.addEventListener("change", () => {
+    st.labels = labelsBox.checked;
+    applyFlags();
+    persist();
+  });
 
   swBtn.addEventListener("click", () => {
     if (st.swRun) {
@@ -483,18 +513,26 @@ export function initFlipClock() {
 
   function setMax(on) {
     stage.classList.toggle("max", on);
+    // 全屏时齿轮和「退出全屏」都收掉（见 styles.css 的 .fc-stage.max），
+    // 浮窗要是开着就一起关掉，否则退出全屏会突然弹回来。退出只走 Esc
+    if (on) setPop(false);
+    // 全屏时把 html 底衬压黑、收掉祖先的浅色边框（见 styles.css 的 html.fc-fullscreen）
+    document.documentElement.classList.toggle("fc-fullscreen", on);
     fullBtn.textContent = on ? "退出全屏" : "全屏";
     if (isTauri) {
       try {
         // 覆盖层只铺满客户区，窗口本身还得靠它去顶掉任务栏；失败也不能留未捕获的 promise
-        window.__TAURI__.window
-          .getCurrentWindow()
-          .setFullscreen(on)
-          .catch((ex) =>
-            setStatus(
-              "窗口全屏没开成：" + (ex?.message || ex) + "（已按页内铺满显示）",
-            ),
-          );
+        const win = window.__TAURI__.window.getCurrentWindow();
+        win.setFullscreen(on).catch((ex) =>
+          setStatus(
+            "窗口全屏没开成：" + (ex?.message || ex) + "（已按页内铺满显示）",
+          ),
+        );
+        // Windows 的无边框窗口全屏后，系统阴影会在窗口下沿留一条浅色描边；
+        // 进全屏关掉、退出还原。老版本没有这个 API 就安静跳过
+        if (typeof win.setShadow === "function") {
+          win.setShadow(!on).catch(() => {});
+        }
       } catch (e) {
         setStatus("窗口全屏调不起来，只做了页内铺满");
       }

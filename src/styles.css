@@ -394,9 +394,9 @@ body {
   color: var(--accent-text);
 }
 
+/* 焦点框统一不要：见文件末尾的全局规则 */
 .tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
 }
 
 /* 被抓起来换位置的那一页：行上下都裁着，所以只做描边+微放大，不上浮 */
@@ -843,9 +843,9 @@ body {
   transition-duration: 90ms;
 }
 
+/* 焦点框统一不要：见文件末尾的全局规则 */
 .theme-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
 }
 
 /* 月亮和太阳叠在一起、由 JS 切 [hidden];这里只负责「旋钮转一圈」的效果 */
@@ -2844,6 +2844,8 @@ select:disabled {
   --cw: calc(var(--ch) * 0.7);
   --led: calc(var(--ch) * 0.62);
   --dur: 200ms;
+  /* 一次翻页分前后两个半程，各占一半时长：前半折旧上半，后半落新下半 */
+  --half: calc(var(--dur) / 2);
   --led-h: 6;
   --led-s: 100%;
   --led-c: hsl(var(--led-h), var(--led-s), 62%);
@@ -2861,14 +2863,41 @@ select:disabled {
   overflow: hidden;
 }
 
-/* 全屏：铺满视口，卡高改用视口单位，缩放滑条让位给屏幕大小 */
+/* 全屏：铺满视口，卡高改用视口单位，缩放滑条让位给屏幕大小。
+   比视口多铺 1px 且清掉全部轮廓/描边/投影，免得浅色皮肤或窗口边缘
+   从舞台下沿透出一条亮线（无边框窗口全屏时的系统描边会露在这里）。 */
 .fc-stage.max {
   position: fixed;
-  inset: 0;
+  inset: -1px;
   z-index: 200;
   border: 0;
   border-radius: 0;
-  --ch: min(26vh, 58vw);
+  outline: none;
+  box-shadow: none;
+  background: #000;
+  /* 26vh × 1.25 = 32.5vh；实测整排时钟宽约 4.8 个卡高，按 5 留余量，窄窗口也不溢出 */
+  --ch: min(32.5vh, calc((100vw - 24px) / 5));
+}
+
+/* 全屏只留时钟：「退出全屏」和齿轮（连设置浮窗）一起收掉，退出统一走 Esc */
+.fc-stage.max > #fc-full,
+.fc-stage.max > .fc-set-wrap {
+  display: none;
+}
+
+/* 全屏时把窗口底衬一并压黑，并收掉祖先容器可能残留的浅色边框 */
+/* 类名不能叫 fc-fs：那是「全屏按钮」自己的类，套在 html 上会把按钮的
+   position/padding/border/font-size 全继承到根元素 */
+html.fc-fullscreen,
+html.fc-fullscreen body {
+  background: #000;
+}
+
+html.fc-fullscreen .panel.fc-host,
+html.fc-fullscreen .page {
+  border-color: #000;
+  outline: none;
+  box-shadow: none;
 }
 
 .fc-clock {
@@ -3057,6 +3086,15 @@ select:disabled {
   color: #6f6f6f;
 }
 
+/* 显示设置里关掉「时分秒」小字：连分组间距一起收掉，卡片仍居中 */
+.fc-stage.nolbl .fc-lbl {
+  display: none;
+}
+
+.fc-stage.nolbl .fc-grp {
+  gap: 0;
+}
+
 .fc-colon {
   align-self: flex-start;
   height: var(--ch);
@@ -3104,7 +3142,10 @@ select:disabled {
   bottom: 0;
 }
 
-.fc-bot i {
+/* 下半区的数字要往上挪半个卡高，露出来的才是数字的下半截。
+   .fc-fb（翻页背面）同样落在下半区，漏了这条会显示成新数字的上半截。 */
+.fc-bot i,
+.fc-fb i {
   transform: translateY(-50%);
 }
 
@@ -3112,6 +3153,9 @@ select:disabled {
 .fc-fb {
   display: none;
   z-index: 3;
+  /* 翻起来的两片是实体纸页：必须自带不透明底色，不能只靠舞台背景衬着。
+     否则旋转时会透出背后的静止层数字，看起来像一片玻璃。 */
+  background-color: #1d1d1d;
 }
 
 .fc-card.fl .fc-ft,
@@ -3119,37 +3163,52 @@ select:disabled {
   display: flex;
 }
 
+/* 翻页动作（扁平 / 立体共用同一套，差别只在卡面质感和有无透视）：
+   前半程 .fc-ft 绕中线向下折 0° → -90°，把背后的新数字上半一点点露出来；
+   后半程同一张页的背面 .fc-fb 从 90° 落到 0°，由中线往下盖住旧下半。
+   两段各 --half，首尾相接，总时长正好 --dur，和 JS 移除 .fl 的时机对齐。 */
 .fc-ft {
   top: 0;
   transform-origin: center bottom;
-  animation: fcTop var(--dur) cubic-bezier(0.45, 0, 1, 1) both;
+  animation: fcTop var(--half) cubic-bezier(0.45, 0, 0.85, 0.7) both;
 }
 
 .fc-fb {
   bottom: 0;
   transform-origin: center top;
-  animation: fcBot var(--dur) cubic-bezier(0, 0.55, 0.55, 1) both;
-  animation-delay: calc(var(--dur) / 2);
+  animation: fcBot var(--half) cubic-bezier(0.15, 0.3, 0.55, 1) both;
+  animation-delay: var(--half);
 }
 
-/* 扁平：上下两半一起朝外压掉，中间不会空一拍，数字是一路化过去的。
-   （立体才是先折上半、再翻下半，两段接得上） */
-.fc-stage[data-style='flat'] .fc-ft {
-  animation: fcTop var(--dur) cubic-bezier(0.45, 0.05, 0.3, 1) both;
+/* 纸页受光：折下去的正面越折越暗，落下来的背面越接近落点越亮 */
+.fc-ft::before,
+.fc-fb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.fc-stage[data-style='flat'] .fc-fb {
-  transform-origin: center bottom;
-  animation: fcBotDown var(--dur) cubic-bezier(0.45, 0.05, 0.3, 1) both;
+.fc-card.fl .fc-ft::before {
+  animation: fcShadeIn var(--half) linear both;
 }
 
-@keyframes fcBotDown {
-  from {
-    transform: rotateX(0deg);
-  }
-  to {
-    transform: rotateX(90deg);
-  }
+.fc-card.fl .fc-fb::before {
+  animation: fcShadeOut var(--half) linear both;
+  animation-delay: var(--half);
+}
+
+@keyframes fcShadeIn {
+  from { opacity: 0; }
+  to { opacity: 0.5; }
+}
+
+@keyframes fcShadeOut {
+  from { opacity: 0.5; }
+  to { opacity: 0; }
 }
 
 @keyframes fcTop {
@@ -3192,15 +3251,19 @@ select:disabled {
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.6);
 }
 
+/* 渐变之外再垫一层实色：渐变本身不透明，但 background 简写会把
+   background-color 重置成 transparent，栅格化时个别层仍可能露底 */
 .fc-stage[data-style="3d"] .fc-top,
 .fc-stage[data-style="3d"] .fc-ft {
-  background: linear-gradient(#3d3d3d, #262626);
+  background-color: #2a2a2a;
+  background-image: linear-gradient(#3d3d3d, #262626);
   border-radius: 10px 10px 2px 2px;
 }
 
 .fc-stage[data-style="3d"] .fc-bot,
 .fc-stage[data-style="3d"] .fc-fb {
-  background: linear-gradient(#242424, #141414);
+  background-color: #141414;
+  background-image: linear-gradient(#242424, #141414);
   border-radius: 2px 2px 10px 10px;
 }
 
@@ -3216,17 +3279,37 @@ select:disabled {
   pointer-events: none;
 }
 
+/* 卡面高光要压在翻页阴影之上，不然 .fc-ft::before 的 z-index:2 会把它吃掉 */
 .fc-stage[data-style="3d"] .fc-ft::after {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 3;
   background: linear-gradient(rgba(255, 255, 255, 0.09), transparent 60%);
+  pointer-events: none;
 }
 
-/* 取消「卡片底色」这一档：只留数字，别留底 */
-.fc-stage.nobg .fc-h {
+/* 落下来的那半页顶边也留一道亮边，纸页才有厚度 */
+.fc-stage[data-style="3d"] .fc-fb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: linear-gradient(rgba(255, 255, 255, 0.07), transparent 22%);
+  pointer-events: none;
+}
+
+/* 取消「卡片底色」这一档：静止的两半只留数字，别留底；
+   但翻页片仍保持不透明实色，否则翻起来会透出背后的数字。 */
+.fc-stage.nobg .fc-top,
+.fc-stage.nobg .fc-bot {
   background: transparent !important;
   border: 0 !important;
+}
+
+.fc-stage.nobg .fc-ft,
+.fc-stage.nobg .fc-fb {
+  background-color: #1d1d1d !important;
 }
 
 .fc-stage.nobg .fc-card {
@@ -3353,7 +3436,8 @@ select:disabled {
 
 .fc-inline {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 
 .fc-custom {
@@ -3554,4 +3638,14 @@ select:disabled {
     flex-basis: 50px;
     width: 50px;
   }
+}
+
+/* ===== 焦点框统一关掉 =====
+   WebView2 里按 F3（查找下一个）/ F7（插入点浏览）会把页面切进「键盘焦点」模式：
+   最后点过的按钮被套上白色系统焦点框，页签被套上 .tab:focus-visible 的蓝框。
+   这是个纯鼠标操作的工具箱，不需要这套高亮；输入框仍有 border-color 提示。
+   按键本身在 main.js 的捕获阶段一并拦掉。 */
+*:focus,
+*:focus-visible {
+  outline: none !important;
 }

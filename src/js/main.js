@@ -1022,6 +1022,20 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // 回车不再二次触发当前聚焦的按钮/页签：用鼠标点过「打开图片…」之后再敲回车，
 // 原来会把那个按钮再按一次。输入框里的回车是各页自己的功能（解析链接、收时间框），照旧放行。
+// F3（查找下一个）/ F7（插入点浏览）即便浏览器加速键在 Rust 侧被关掉，
+// 按键仍会落到页面并把 WebView 切成「键盘焦点」模式：按钮冒出白色焦点框、
+// 页签冒出蓝色焦点框。在捕获阶段直接吃掉，配合 styles.css 末尾的全局 outline 规则。
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key === 'F3' || e.key === 'F7') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  },
+  true
+);
+
 // 浏览器快捷键（F1/F3/F5/F7、Ctrl+F/P/S/O…）在 Rust 侧整组关掉，这里只补页面这层：
 // Ctrl+滚轮缩放（zoomHotkeysEnabled 之外的兜底）
 document.addEventListener(
