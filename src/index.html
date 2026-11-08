@@ -347,6 +347,7 @@
       <button class="tab" id="tab-convert">图片格式转换</button>
       <button class="tab" id="tab-normal">贴图转法线</button>
       <button class="tab" id="tab-seamless">无缝贴图</button>
+      <button class="tab" id="tab-flowmap">Flowmap绘制</button>
       <button class="tab" id="tab-gif">制作GIF</button>
       <button class="tab" id="tab-gifview">GIF动画预览</button>
       <button class="tab" id="tab-video">视频格式转换</button>
@@ -2279,6 +2280,182 @@
         <button class="btn danger" id="sd-abort" hidden>中止关机</button>
         <div class="dim-label sd-power-line" id="sd-power-line"></div>
         <div class="status" id="sd-status"></div>
+      </div>
+    </div>
+
+    <!-- Flowmap 绘制：左画布 / 中参数 / 右实时流动预览，控件沿用工具箱既有组件 -->
+    <div class="page hidden" id="page-flowmap">
+      <div class="panel fm-draw-panel" style="flex: 1 1 0; min-width: 0">
+        <div class="panel-head">
+          <span class="panel-title">流向图画布</span>
+          <div class="view-tools">
+            <button class="view-btn" id="fm-fit" type="button">适配窗口</button>
+            <button class="view-btn" id="fm-actual" type="button">100%</button>
+            <button class="view-btn" id="fm-reset" type="button">重置位置</button>
+          </div>
+        </div>
+        <div class="canvas-wrap fm-stage" id="fm-stage">
+          <canvas id="fm-canvas"></canvas>
+        </div>
+        <div class="dim-label" id="fm-info">画布：1024 × 1024 | 视图：适配 | 坐标：-</div>
+        <div class="seg-row" id="fm-tool-row">
+          <button class="btn on" id="fm-tool-draw" data-tool="draw" type="button">绘制流向</button>
+          <button class="btn" id="fm-tool-erase" data-tool="erase" type="button">擦除</button>
+          <button class="btn" id="fm-tool-blur" data-tool="blur" type="button">柔化</button>
+        </div>
+        <div class="ctrl-row wrap">
+          <button class="btn small" id="fm-undo" type="button">撤销</button>
+          <button class="btn small" id="fm-redo" type="button">重做</button>
+          <button class="btn small" id="fm-clear" type="button">清空画布</button>
+          <span class="spacer"></span>
+          <span class="dim-label" id="fm-history">历史：0 步</span>
+        </div>
+        <div class="help-label">
+          左键拖动绘制流向（渐进叠加，不覆盖旧笔触）；右键拖动擦除；中键 / 空格拖动平移，滚轮缩放；<b>Ctrl + 滚轮调笔刷大小</b>。<br />
+          按住 S 拖动调笔刷（横向大小、纵向强度），[ / ] 微调大小，Shift 临时柔化，F 适配窗口；Ctrl+Z / Ctrl+Shift+Z 撤销重做。拖入图片作为底图。
+        </div>
+      </div>
+
+      <div class="panel fm-ctrl-panel" style="flex: 0.62 1 0; min-width: 260px">
+        <div class="panel-head">
+          <span class="panel-title">绘制参数</span>
+          <span class="dim-label fm-head-note">R = X 方向 / G = Y 方向</span>
+          <button class="btn tiny" id="fm-reset-draw" type="button" title="把本栏的笔刷、显示、四方连续与导出选项恢复为初始值（画布分辨率和文件名保持不变）">恢复默认</button>
+        </div>
+        <div class="fm-scroll">
+          <div class="fm-group">
+            <div class="fm-group-title">笔刷</div>
+            <div class="form-grid">
+              <label>笔刷大小</label>
+              <div class="dual-row">
+                <input type="range" id="fm-radius" min="5" max="200" step="1" value="40" />
+                <input type="number" id="fm-radius-num" min="5" max="200" step="1" value="40" />
+              </div>
+              <label>流动强度</label>
+              <div class="dual-row">
+                <input type="range" id="fm-strength" min="1" max="100" step="1" value="5" />
+                <input type="number" id="fm-strength-num" min="1" max="100" step="1" value="5" />
+              </div>
+              <label>速度感应</label>
+              <div class="dual-row">
+                <input type="range" id="fm-pressure" min="0" max="100" step="1" value="70" />
+                <input type="number" id="fm-pressure-num" min="0" max="100" step="1" value="70" />
+              </div>
+            </div>
+          </div>
+
+          <div class="fm-group">
+            <div class="fm-group-title">画布与显示</div>
+            <div class="form-grid">
+              <label>画布分辨率</label>
+              <select id="fm-size">
+                <option value="512">512 × 512</option>
+                <option value="1024" selected>1024 × 1024</option>
+                <option value="2048">2048 × 2048</option>
+                <option value="4096">4096 × 4096</option>
+              </select>
+              <label>显示方式</label>
+              <select id="fm-view-mode">
+                <option value="flow" selected>流向图（RG 编码）</option>
+                <option value="base">底图 + 流向叠加</option>
+                <option value="arrows">流向图 + 方向箭头</option>
+              </select>
+              <label>叠加透明度</label>
+              <div class="dual-row">
+                <input type="range" id="fm-opacity" min="0" max="100" step="1" value="65" />
+                <input type="number" id="fm-opacity-num" min="0" max="100" step="1" value="65" />
+              </div>
+            </div>
+            <div class="fm-checks">
+              <label class="chk"><input type="checkbox" id="fm-seamless" checked /><span>四方连续绘制（跨边缘镜像笔刷）</span></label>
+              <label class="chk"><input type="checkbox" id="fm-grid" /><span>显示辅助网格</span></label>
+            </div>
+          </div>
+
+          <div class="fm-group">
+            <div class="fm-group-title">文件</div>
+            <div class="ctrl-row wrap">
+              <button class="btn small" id="fm-import" type="button">导入流向图…</button>
+              <button class="btn small" id="fm-base" type="button">导入底图…</button>
+            </div>
+            <div class="form-grid">
+              <label>导出格式</label>
+              <select id="fm-fmt">
+                <option value="png">PNG</option>
+                <option value="tga">TGA</option>
+              </select>
+              <label>导出尺寸</label>
+              <select id="fm-export-size">
+                <option value="0" selected>与画布一致</option>
+                <option value="512">512 × 512</option>
+                <option value="1024">1024 × 1024</option>
+                <option value="2048">2048 × 2048</option>
+                <option value="4096">4096 × 4096</option>
+              </select>
+              <label>文件名</label>
+              <input type="text" id="fm-name" placeholder="留空则为 flowmap" />
+            </div>
+            <div class="fm-checks">
+              <label class="chk"><input type="checkbox" id="fm-inv-r" /><span>导出时翻转 R 通道</span></label>
+              <label class="chk"><input type="checkbox" id="fm-inv-g" /><span>导出时翻转 G 通道</span></label>
+            </div>
+            <button class="btn primary" id="fm-export" type="button">导出流向图</button>
+          </div>
+        </div>
+        <div class="status" id="fm-status"></div>
+      </div>
+
+      <div class="panel fm-preview-panel" style="flex: 1 1 0; min-width: 0">
+        <div class="panel-head">
+          <span class="panel-title">实时流动预览</span>
+          <span class="dim-label fm-head-note" id="fm-fps">WebGL</span>
+          <button class="btn tiny" id="fm-reset-preview" type="button" title="把本栏的流动速度、流动距离、底图缩放、平铺、预览内容与通道约定恢复为初始值（动画播放状态保持不变）">恢复默认</button>
+        </div>
+        <div class="canvas-wrap fm-preview-wrap" id="fm-preview-wrap">
+          <canvas id="fm-preview"></canvas>
+        </div>
+        <div class="ctrl-row wrap">
+          <button class="btn small on" id="fm-play" type="button">暂停动画</button>
+          <span class="spacer"></span>
+          <button class="btn small" id="fm-reset-time" type="button">重置时间</button>
+        </div>
+        <div class="form-grid">
+          <label>流动速度</label>
+          <div class="dual-row">
+            <input type="range" id="fm-speed" min="1" max="200" step="1" value="50" />
+            <input type="number" id="fm-speed-num" min="1" max="200" step="1" value="50" />
+          </div>
+          <label>流动距离</label>
+          <div class="dual-row">
+            <input type="range" id="fm-dist" min="1" max="100" step="1" value="30" />
+            <input type="number" id="fm-dist-num" min="1" max="100" step="1" value="30" />
+          </div>
+          <label>底图缩放</label>
+          <div class="dual-row">
+            <input type="range" id="fm-scale" min="100" max="200" step="1" value="100" />
+            <input type="number" id="fm-scale-num" min="100" max="200" step="1" value="100" />
+          </div>
+          <label>平铺次数</label>
+          <select id="fm-tiles">
+            <option value="1" selected>1 × 1</option>
+            <option value="2">2 × 2</option>
+            <option value="3">3 × 3</option>
+            <option value="4">4 × 4</option>
+          </select>
+          <label>预览内容</label>
+          <select id="fm-preview-mode">
+            <option value="flow" selected>流动效果（双相位混合）</option>
+            <option value="rg">原始 RG 通道</option>
+            <option value="base">仅底图</option>
+          </select>
+        </div>
+        <div class="fm-checks">
+          <label class="chk"><input type="checkbox" id="fm-directx" /><span>DirectX 约定（预览时 G 取反）</span></label>
+          <label class="chk"><input type="checkbox" id="fm-tile" /><span>预览重复模式（含平铺边界框）</span></label>
+        </div>
+        <div class="help-label">
+          中性色 (128, 128, 0) 表示无流动；双相位错开 0.5 采样底图并混合，可直观看到材质沿笔触方向流动。底图默认使用随附的水面焦散贴图。
+        </div>
       </div>
     </div>
 

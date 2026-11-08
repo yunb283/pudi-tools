@@ -14,6 +14,7 @@ import { initPdfPage } from './pdf-page.js';
 import { initSysInfo } from './sysinfo-page.js';
 import { initShutdown } from './shutdown-page.js';
 import { initFlipClock } from './clock-page.js';
+import { initFlowmap } from './flowmap-page.js';
 import {
   onGlobalDrop,
   isSupportedName,
@@ -98,6 +99,7 @@ const tabMerge = document.getElementById('tab-merge');
 const tabConvert = document.getElementById('tab-convert');
 const tabNormal = document.getElementById('tab-normal');
 const tabSeamless = document.getElementById('tab-seamless');
+const tabFlowmap = document.getElementById('tab-flowmap');
 const tabGif = document.getElementById('tab-gif');
 const tabGifView = document.getElementById('tab-gifview');
 const tabVideo = document.getElementById('tab-video');
@@ -112,6 +114,7 @@ const pageMerge = document.getElementById('page-merge');
 const pageConvert = document.getElementById('page-convert');
 const pageNormal = document.getElementById('page-normal');
 const pageSeamless = document.getElementById('page-seamless');
+const pageFlowmap = document.getElementById('page-flowmap');
 const pageGif = document.getElementById('page-gif');
 const pageGifView = document.getElementById('page-gifview');
 const pageVideo = document.getElementById('page-video');
@@ -224,6 +227,7 @@ const pdfApi = initPdfPage();
 initSysInfo();
 const shutdownApi = initShutdown();
 initFlipClock();
+const flowmapApi = initFlowmap();
 
 // 两行封顶的那几行（各页状态行、GIF 页信息行）只显示两行，超出省略号；
 // 完整文字挂到 title 上，鼠标悬停看全文
@@ -241,6 +245,7 @@ const tabs = [
   ['convert', tabConvert, pageConvert, [convView]],
   ['normal', tabNormal, pageNormal, [nrmSrcView, nrmOutView]],
   ['seamless', tabSeamless, pageSeamless, [smlSrcView, smlOutView]],
+  ['flowmap', tabFlowmap, pageFlowmap, []],
   ['gif', tabGif, pageGif, [gifSrcView]],
   ['gifview', tabGifView, pageGifView, [gvView]],
   ['video', tabVideo, pageVideo, []],
@@ -292,6 +297,7 @@ tabMerge.addEventListener('click', () => showTab('merge'));
 tabConvert.addEventListener('click', () => showTab('convert'));
 tabNormal.addEventListener('click', () => showTab('normal'));
 tabSeamless.addEventListener('click', () => showTab('seamless'));
+tabFlowmap.addEventListener('click', () => showTab('flowmap'));
 tabGif.addEventListener('click', () => showTab('gif'));
 tabGifView.addEventListener('click', () => showTab('gifview'));
 tabVideo.addEventListener('click', () => showTab('video'));
@@ -975,6 +981,11 @@ onGlobalDrop((entries) => {
   // 视频转换页优先吃视频（批量模式下整批收进待转换列表）
   if (!pageVideo.classList.contains('hidden')) {
     videoApi.addEntries(entries);
+    return;
+  }
+  // Flowmap 绘制页：拖入的图片当作底图载入
+  if (!pageFlowmap.classList.contains('hidden')) {
+    flowmapApi.loadEntry(entries[0]);
     return;
   }
   // 几个动画/贴图处理页各有一份白名单，谁在前台就交给谁（白名单外也递过去，由页面给提示）

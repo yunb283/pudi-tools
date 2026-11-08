@@ -1,12 +1,12 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.1.17",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build",
+    "build": "node scripts/prepare-build.mjs && tauri build",
     "bump": "node scripts/bump-version.mjs",
     "version:minor": "node scripts/bump-version.mjs minor",
     "version:major": "node scripts/bump-version.mjs major"
