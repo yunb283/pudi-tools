@@ -46,6 +46,13 @@ uniform float uRepeat;
 uniform float uBorder;
 uniform float uHasBase;
 uniform float uTiles;
+uniform vec2 uUvShift;
+uniform float uUvWrap;
+
+// UV 动画开启时强制循环采样，否则底图滑出边界会被拉伸成一条边
+vec2 wrapUV(vec2 v) {
+  return (uRepeat > 0.5 || uUvWrap > 0.5) ? fract(v) : clamp(v, vec2(0.0), vec2(1.0));
+}
 
 void main() {
   vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
@@ -54,8 +61,8 @@ void main() {
   vec2 rg = texture2D(uFlow, suv).rg;
 
   if (uMode > 1.5) {                       // 仅底图
-    vec2 b = (uRepeat > 0.5) ? fract(uv / uScale * uTiles) : clamp(uv / uScale, vec2(0.0), vec2(1.0));
-    gl_FragColor = vec4(texture2D(uBase, b).rgb, 1.0);
+    vec2 b = uv / uScale * uTiles + uUvShift;
+    gl_FragColor = vec4(texture2D(uBase, wrapUV(b)).rgb, 1.0);
     return;
   }
   if (uMode > 0.5 || uHasBase < 0.5) {     // 原始 RG 编码（底图缺失时也退回它）
@@ -71,16 +78,9 @@ void main() {
   float phase = uTime * uSpeed;
   float p0 = fract(phase);
   float p1 = fract(phase + 0.5);
-  vec2 buv = uv / uScale * uTiles;
-  vec2 s0 = buv + dir * p0 * uDist;
-  vec2 s1 = buv + dir * p1 * uDist;
-  if (uRepeat > 0.5) {
-    s0 = fract(s0);
-    s1 = fract(s1);
-  } else {
-    s0 = clamp(s0, vec2(0.0), vec2(1.0));
-    s1 = clamp(s1, vec2(0.0), vec2(1.0));
-  }
+  vec2 buv = uv / uScale * uTiles + uUvShift;
+  vec2 s0 = wrapUV(buv + dir * p0 * uDist);
+  vec2 s1 = wrapUV(buv + dir * p1 * uDist);
   vec3 c0 = texture2D(uBase, s0).rgb;
   vec3 c1 = texture2D(uBase, s1).rgb;
   vec3 col = mix(c0, c1, abs((0.5 - p0) / 0.5));
@@ -213,6 +213,42 @@ export function initFlowmap() {
     }
     dispCtx.putImageData(dispImg, 0, 0, x0, y0, x1 - x0, y1 - y0);
     flowTexDirty = true;
+  }
+
+  // ===== 整图羽化：可分离盒式模糊（先水平后垂直），用于柔化笔触边缘 =====
+  function featherFlow(radius) {
+    const r = clamp(Math.round(radius), 1, 200);
+    const tmp = new Float32Array(W * H);
+    const prefix = new Float64Array(Math.max(W, H) + 1);
+    for (let ch = 0; ch < 2; ch++) {
+      for (let y = 0; y < H; y++) {
+        const row = y * W;
+        let acc = 0;
+        prefix[0] = 0;
+        for (let x = 0; x < W; x++) {
+          acc += data[(row + x) * 2 + ch];
+          prefix[x + 1] = acc;
+        }
+        for (let x = 0; x < W; x++) {
+          const x0 = Math.max(0, x - r);
+          const x1 = Math.min(W - 1, x + r);
+          tmp[row + x] = (prefix[x1 + 1] - prefix[x0]) / (x1 - x0 + 1);
+        }
+      }
+      for (let x = 0; x < W; x++) {
+        let acc = 0;
+        prefix[0] = 0;
+        for (let y = 0; y < H; y++) {
+          acc += tmp[y * W + x];
+          prefix[y + 1] = acc;
+        }
+        for (let y = 0; y < H; y++) {
+          const y0 = Math.max(0, y - r);
+          const y1 = Math.min(H - 1, y + r);
+          data[(y * W + x) * 2 + ch] = Math.round((prefix[y1 + 1] - prefix[y0]) / (y1 - y0 + 1));
+        }
+      }
+    }
   }
 
   function initData(size) {
@@ -629,7 +665,7 @@ export function initFlowmap() {
       const loc = gl.getAttribLocation(prog, 'aPos');
       gl.enableVertexAttribArray(loc);
       gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      for (const n of ['uFlow', 'uBase', 'uTime', 'uSpeed', 'uDist', 'uScale', 'uDirectX', 'uMode', 'uRepeat', 'uBorder', 'uHasBase', 'uTiles']) {
+      for (const n of ['uFlow', 'uBase', 'uTime', 'uSpeed', 'uDist', 'uScale', 'uDirectX', 'uMode', 'uRepeat', 'uBorder', 'uHasBase', 'uTiles', 'uUvShift', 'uUvWrap']) {
         uni[n] = gl.getUniformLocation(prog, n);
       }
       flowTex = makeTexture(128, 128, 0, 255);
@@ -713,6 +749,19 @@ export function initFlowmap() {
       gl.uniform1f(uni.uBorder, border ? 1 : 0);
       gl.uniform1f(uni.uHasBase, basePot ? 1 : 0);
       gl.uniform1f(uni.uTiles, repeat ? tiles : 1);
+      // UV 动画：速度 0 关闭；1 单位 = 每秒滚过一整个贴图；方向向量默认取负，按钮可翻回正向
+      const uvSpeed = clamp(num('fm-uv-speed-num') / 100, 0, 2);
+      const uvDir = { u: [-1, 0], v: [0, -1], d: [-0.7071, -0.7071] }[$('fm-uv-dir').value] || [0, 0];
+      const uvSign = $('fm-uv-reverse').classList.contains('on') ? -1 : 1;
+      const uvOn = uvSpeed > 0 && (uvDir[0] !== 0 || uvDir[1] !== 0);
+      const uvShift = uvOn
+        ? [
+            ((uvDir[0] * uvSign * uvSpeed * animTime) % 1 + 1) % 1,
+            ((uvDir[1] * uvSign * uvSpeed * animTime) % 1 + 1) % 1,
+          ]
+        : [0, 0];
+      gl.uniform2f(uni.uUvShift, uvShift[0], uvShift[1]);
+      gl.uniform1f(uni.uUvWrap, uvOn ? 1 : 0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       return;
     }
@@ -905,10 +954,12 @@ export function initFlowmap() {
   link('fm-strength', 'fm-strength-num');
   link('fm-pressure', 'fm-pressure-num');
   link('fm-blur', 'fm-blur-num');
+  link('fm-feather', 'fm-feather-num');
   link('fm-opacity', 'fm-opacity-num', requestDraw);
   link('fm-speed', 'fm-speed-num');
   link('fm-dist', 'fm-dist-num');
   link('fm-scale', 'fm-scale-num');
+  link('fm-uv-speed', 'fm-uv-speed-num');
 
   // ===== 恢复默认参数 =====
   // 滑杆和数字框是成对的，程序改 value 不会触发 link() 的 input 事件，所以两个 id 都要写。
@@ -918,6 +969,7 @@ export function initFlowmap() {
     ['fm-strength', 5], ['fm-strength-num', 5],
     ['fm-pressure', 70], ['fm-pressure-num', 70],
     ['fm-blur', 60], ['fm-blur-num', 60],
+    ['fm-feather', 8], ['fm-feather-num', 8],
     ['fm-view-mode', 'flow'],
     ['fm-opacity', 65], ['fm-opacity-num', 65],
     ['fm-seamless', true], ['fm-grid', false],
@@ -928,6 +980,7 @@ export function initFlowmap() {
     ['fm-speed', 50], ['fm-speed-num', 50],
     ['fm-dist', 30], ['fm-dist-num', 30],
     ['fm-scale', 100], ['fm-scale-num', 100],
+    ['fm-uv-dir', 'u'], ['fm-uv-speed', 0], ['fm-uv-speed-num', 0], ['fm-uv-reverse', false],
     ['fm-tiles', '1'], ['fm-preview-mode', 'flow'],
     ['fm-directx', false], ['fm-tile', false],
   ];
@@ -937,6 +990,7 @@ export function initFlowmap() {
       const el = $(id);
       if (!el) continue;
       if (el.type === 'checkbox') el.checked = v;
+      else if (el.tagName === 'BUTTON') el.classList.toggle('on', !!v);
       else el.value = String(v);
     }
     requestDraw();
@@ -962,6 +1016,17 @@ export function initFlowmap() {
     for (const b of $('fm-tool-row').querySelectorAll('.btn'))
       b.classList.toggle('on', b.dataset.tool === name);
   }
+  $('fm-feather-apply').addEventListener('click', () => {
+    const r = clamp(Math.round(num('fm-feather-num')), 1, 100);
+    beginOp();
+    markTiles(0, 0, W, H, opBefore);
+    const t0 = performance.now();
+    featherFlow(r);
+    opChanged = true;
+    rebuildDisplay();
+    endOp();
+    setStatus(`整幅羽化 ${r}px 完成（${Math.round(performance.now() - t0)} ms，可撤销）`);
+  });
   for (const id of ['fm-tool-draw', 'fm-tool-erase', 'fm-tool-blur']) {
     $(id).addEventListener('click', () => selectTool($(id).dataset.tool));
   }
@@ -1000,6 +1065,9 @@ export function initFlowmap() {
   });
   $('fm-reset-time').addEventListener('click', () => {
     animTime = 0;
+  });
+  $('fm-uv-reverse').addEventListener('click', () => {
+    $('fm-uv-reverse').classList.toggle('on');
   });
   $('fm-size').addEventListener('change', () => {
     const size = Number($('fm-size').value);

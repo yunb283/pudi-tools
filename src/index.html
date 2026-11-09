@@ -23,6 +23,15 @@
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="styles.css" />
+    <!-- 模型预览页用的 three.js 0.180.0（MIT）整包放在本地 vendor，裸模块名靠 importmap 指过去，离线可用 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.js",
+          "three/addons/": "./vendor/three/addons/"
+        }
+      }
+    </script>
   </head>
   <body>
     <!-- 自绘标题栏:系统标题栏已关闭(decorations: false),拖拽、最小化、最大化、关闭都在这里 -->
@@ -348,6 +357,7 @@
       <button class="tab" id="tab-normal">贴图转法线</button>
       <button class="tab" id="tab-seamless">无缝贴图</button>
       <button class="tab" id="tab-flowmap">Flowmap绘制</button>
+      <button class="tab" id="tab-model">模型预览</button>
       <button class="tab" id="tab-gif">制作GIF</button>
       <button class="tab" id="tab-gifview">GIF动画预览</button>
       <button class="tab" id="tab-video">视频格式转换</button>
@@ -2381,6 +2391,21 @@
           </div>
 
           <div class="fm-group">
+            <div class="fm-group-title">整图处理</div>
+            <div class="form-grid">
+              <label title="按像素半径对整幅流向图做盒式模糊">羽化半径</label>
+              <div class="dual-row">
+                <input type="range" id="fm-feather" min="1" max="100" step="1" value="8" />
+                <input type="number" id="fm-feather-num" min="1" max="100" step="1" value="8" />
+              </div>
+            </div>
+            <button class="btn small" id="fm-feather-apply" type="button">对整幅流向图羽化</button>
+            <div class="help-label">
+              对整幅绘制结果做可分离盒式模糊，柔化笔触边缘；半径越大越糊，可多次叠加，支持撤销。
+            </div>
+          </div>
+
+          <div class="fm-group">
             <div class="fm-group-title">文件</div>
             <div class="ctrl-row wrap">
               <button class="btn small" id="fm-import" type="button">导入流向图…</button>
@@ -2417,7 +2442,7 @@
         <div class="panel-head">
           <span class="panel-title">实时流动预览</span>
           <span class="dim-label fm-head-note" id="fm-fps">WebGL</span>
-          <button class="btn tiny" id="fm-reset-preview" type="button" title="把本栏的流动速度、流动距离、底图缩放、平铺、预览内容与通道约定恢复为初始值（动画播放状态保持不变）">恢复默认</button>
+          <button class="btn tiny" id="fm-reset-preview" type="button" title="把本栏的流动速度、流动距离、底图缩放、平铺、UV 动画、预览内容与通道约定恢复为初始值（动画播放状态保持不变）">恢复默认</button>
         </div>
         <div class="canvas-wrap fm-preview-wrap" id="fm-preview-wrap">
           <canvas id="fm-preview"></canvas>
@@ -2450,6 +2475,20 @@
             <option value="3">3 × 3</option>
             <option value="4">4 × 4</option>
           </select>
+          <label>UV 动画方向</label>
+          <select id="fm-uv-dir" title="底图 UV 沿哪个方向随时间滚动">
+            <option value="u" selected>水平（U）</option>
+            <option value="v">垂直（V）</option>
+            <option value="d">对角（U + V）</option>
+            <option value="off">关闭</option>
+          </select>
+          <label>UV 动画速度</label>
+          <div class="dual-row">
+            <input type="range" id="fm-uv-speed" min="0" max="200" step="1" value="0" title="0 表示关闭 UV 动画；100 约等于每秒滚动一整张贴图" />
+            <input type="number" id="fm-uv-speed-num" min="0" max="200" step="1" value="0" />
+          </div>
+          <label>UV 动画反向</label>
+          <button class="btn small" id="fm-uv-reverse" type="button" title="把 UV 滚动方向翻到相反方向（默认已是反向）">反方向</button>
           <label>预览内容</label>
           <select id="fm-preview-mode">
             <option value="flow" selected>流动效果（双相位混合）</option>
@@ -2462,9 +2501,80 @@
           <label class="chk"><input type="checkbox" id="fm-tile" /><span>预览重复模式（含平铺边界框）</span></label>
         </div>
         <div class="help-label">
-          中性色 (128, 128, 0) 表示无流动；双相位错开 0.5 采样底图并混合，可直观看到材质沿笔触方向流动。底图默认使用随附的水面焦散贴图。
+          中性色 (128, 128, 0) 表示无流动；双相位错开 0.5 采样底图并混合，可直观看到材质沿笔触方向流动。UV 动画让底图自身随时间滚动（速度 0 关闭），适合做水面、烟雾等循环纹理。底图默认使用随附的水面焦散贴图。
         </div>
       </div>
+    </div>
+
+    <!-- 模型预览：three.js 本地视口 + 检查通道 + 材质统计 -->
+    <div class="page hidden" id="page-model">
+      <div class="panel mv-main">
+        <div class="panel-head">
+          <span class="panel-title">模型预览</span>
+          <span class="dim-label mv-file" id="mv-file">未载入模型</span>
+          <span style="flex: 1"></span>
+          <button class="btn small" id="mv-open" type="button">打开模型…</button>
+          <button class="btn small" id="mv-reset" type="button">重置视角</button>
+          <button class="btn small" id="mv-shot" type="button">导出截图</button>
+        </div>
+        <div class="canvas-wrap mv-stage" id="mv-stage">
+          <canvas id="mv-canvas"></canvas>
+          <div class="mv-hint" id="mv-hint">把 3D 模型拖到这里，或点「打开模型…」</div>
+        </div>
+        <div class="ctrl-row wrap mv-toolbar">
+          <label class="dim-label">检查通道</label>
+          <select id="mv-channel" title="切换材质检查视图"></select>
+          <label class="dim-label">背景</label>
+          <select id="mv-bg" title="视口背景">
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+            <option value="blue">蓝灰</option>
+            <option value="checker">棋盘格</option>
+          </select>
+          <label class="dim-label" for="mv-quality">画质</label>
+          <select id="mv-quality" title="降低渲染分辨率可改善大模型的交互性能">
+            <option value="performance">流畅</option><option value="balanced" selected>均衡</option><option value="high">高清</option>
+          </select>
+          <label class="dim-label" for="mv-view">视角</label>
+          <select id="mv-view" title="切换标准视角">
+            <option value="iso">立体</option><option value="front">前</option><option value="back">后</option><option value="left">左</option><option value="right">右</option><option value="top">顶</option>
+          </select>
+          <button class="btn small" id="mv-axes" type="button">坐标轴</button>
+          <button class="btn small" id="mv-bounds" type="button">包围盒</button>
+          <button class="btn small" id="mv-wire" type="button">线框</button>
+          <button class="btn small on" id="mv-grid" type="button">网格</button>
+          <button class="btn small" id="mv-rotate" type="button">自动旋转</button>
+          <select id="mv-clip" title="选择动画" aria-label="选择动画" disabled></select>
+          <button class="btn small" id="mv-anim" type="button" disabled>播放动画</button>
+        </div>
+        <div class="status" id="mv-status"></div>
+      </div>
+      <div class="panel mv-side">
+        <div class="panel-head"><span class="panel-title">模型信息</span></div>
+        <div class="mv-scroll">
+          <div class="mv-group">
+            <div class="mv-group-title">统计</div>
+            <div class="mv-stats" id="mv-stats"></div>
+          </div>
+          <div class="mv-group">
+            <div class="mv-group-title">材质</div>
+            <div class="mv-matlist" id="mv-materials"></div>
+          </div>
+        </div>
+        <button class="btn small mv-help-button" id="mv-help-open" type="button" aria-haspopup="dialog" aria-controls="mv-help">说明</button>
+      </div>
+      <dialog class="mv-help" id="mv-help" aria-labelledby="mv-help-title">
+        <h2 id="mv-help-title">模型预览说明</h2>
+        <h3>支持的格式</h3>
+        <p id="mv-help-formats"></p>
+        <h3>打开模型与外部资源</h3>
+        <p>可将模型拖入预览区，或点「打开模型…」。将贴图、.bin 和 .mtl 放在模型同目录下即可自动补齐，也可以多选后一同拖入。缺失的贴图会被剔除，相应材质以本色显示。</p>
+        <h3>视口操作与材质检查</h3>
+        <p>左键拖动旋转，右键拖动平移，滚轮缩放。地面网格按模型尺寸调整，贴在模型底面。检查通道遇到不含 PBR 数据的老式材质时，会显示占位灰并在状态栏提示。</p>
+        <form method="dialog">
+          <button class="btn small" type="submit" autofocus>关闭</button>
+        </form>
+      </dialog>
     </div>
 
     <script type="module" src="js/main.js"></script>

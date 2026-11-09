@@ -15,9 +15,11 @@ import { initSysInfo } from './sysinfo-page.js';
 import { initShutdown } from './shutdown-page.js';
 import { initFlipClock } from './clock-page.js';
 import { initFlowmap } from './flowmap-page.js';
+import { initModelPage } from './model-page.js';
 import {
   onGlobalDrop,
   isSupportedName,
+  isModelName,
   isTauri,
   TEXTURE_EXTS,
   GIF_SOURCE_EXTS,
@@ -100,6 +102,7 @@ const tabConvert = document.getElementById('tab-convert');
 const tabNormal = document.getElementById('tab-normal');
 const tabSeamless = document.getElementById('tab-seamless');
 const tabFlowmap = document.getElementById('tab-flowmap');
+const tabModel = document.getElementById('tab-model');
 const tabGif = document.getElementById('tab-gif');
 const tabGifView = document.getElementById('tab-gifview');
 const tabVideo = document.getElementById('tab-video');
@@ -115,6 +118,7 @@ const pageConvert = document.getElementById('page-convert');
 const pageNormal = document.getElementById('page-normal');
 const pageSeamless = document.getElementById('page-seamless');
 const pageFlowmap = document.getElementById('page-flowmap');
+const pageModel = document.getElementById('page-model');
 const pageGif = document.getElementById('page-gif');
 const pageGifView = document.getElementById('page-gifview');
 const pageVideo = document.getElementById('page-video');
@@ -228,6 +232,7 @@ initSysInfo();
 const shutdownApi = initShutdown();
 initFlipClock();
 const flowmapApi = initFlowmap();
+const modelApi = initModelPage();
 
 // 两行封顶的那几行（各页状态行、GIF 页信息行）只显示两行，超出省略号；
 // 完整文字挂到 title 上，鼠标悬停看全文
@@ -246,6 +251,7 @@ const tabs = [
   ['normal', tabNormal, pageNormal, [nrmSrcView, nrmOutView]],
   ['seamless', tabSeamless, pageSeamless, [smlSrcView, smlOutView]],
   ['flowmap', tabFlowmap, pageFlowmap, []],
+  ['model', tabModel, pageModel, [modelApi]],
   ['gif', tabGif, pageGif, [gifSrcView]],
   ['gifview', tabGifView, pageGifView, [gvView]],
   ['video', tabVideo, pageVideo, []],
@@ -298,6 +304,7 @@ tabConvert.addEventListener('click', () => showTab('convert'));
 tabNormal.addEventListener('click', () => showTab('normal'));
 tabSeamless.addEventListener('click', () => showTab('seamless'));
 tabFlowmap.addEventListener('click', () => showTab('flowmap'));
+tabModel.addEventListener('click', () => showTab('model'));
 tabGif.addEventListener('click', () => showTab('gif'));
 tabGifView.addEventListener('click', () => showTab('gifview'));
 tabVideo.addEventListener('click', () => showTab('video'));
@@ -981,6 +988,12 @@ onGlobalDrop((entries) => {
   // 视频转换页优先吃视频（批量模式下整批收进待转换列表）
   if (!pageVideo.classList.contains('hidden')) {
     videoApi.addEntries(entries);
+    return;
+  }
+  // 模型预览页：拖入的 3D 模型，同批文件当作外部贴图 / .bin / .mtl 一起收下
+  if (!pageModel.classList.contains('hidden')) {
+    const main = entries.find((e) => isModelName(e.name)) || entries[0];
+    modelApi.loadEntry(main, entries.filter((e) => e !== main));
     return;
   }
   // Flowmap 绘制页：拖入的图片当作底图载入

@@ -2,11 +2,11 @@
 
 一个基于 **Tauri 2 + 原生 HTML / CSS / JavaScript** 的 Windows 桌面工具集合，把贴图处理、图片 / 音视频转换、PDF 导出和几个日常小工具收进同一个窗口。前端不依赖框架，文件处理基本都在本机完成，不上传素材；只有「视频下载」与「yt-dlp 自检更新」需要联网。
 
-当前版本 **0.1.26**。自绘标题栏、深色 / 浅色主题、窗口置顶、页签显示与排序均可自定义，偏好保存在 `localStorage`。
+版本号由 `scripts/bump-version.mjs` 统一维护（每次构建自动 +1），以 `package.json` 为准。自绘标题栏、深色 / 浅色主题、窗口置顶、页签显示与排序均可自定义，偏好保存在 `localStorage`。
 
 ## 功能一览
 
-共 16 个页签，其中 **批量重命名** 目前是占位页（界面保留，功能未接），其余 15 个可用。
+共 17 个页签，其中 **批量重命名** 目前是占位页（界面保留，功能未接），其余 16 个可用。
 
 ### 贴图与图像
 
@@ -29,6 +29,14 @@
 | 音频格式转换 | 单张 / 批量，也能从视频提取音轨；MP3 / WAV / FLAC / AAC / M4A / OGG / Opus，可调比特率、采样率、声道与截取区间 |
 | 视频下载 | 内置 yt-dlp 解析上千个站点，列出可用格式 / 分辨率 / 编码，支持合集批量、进度显示与 yt-dlp 自检更新 |
 | PDF 转图片 | 基于内置 pdf.js 渲染，PNG / JPEG、96 ~ 600 DPI、全部页或当前页，默认导出到 PDF 同级的同名文件夹 |
+
+### 3D 模型
+
+| 工具 | 说明 |
+| --- | --- |
+| **模型预览** | 本地 WebGL 视口，支持 GLB / glTF、OBJ + MTL、FBX、STL、PLY、DAE、3MF、3DS、VRML、VOX、AMF、PCD / XYZ、USD / USDA / USDC / USDZ、KMZ、LWO、MD2、GCode、VTK；9 个检查通道（PBR、Albedo、法线、粗糙度、金属度、自发光、不透明度、Unlit、线框）、材质与面数统计、动画片段选择与播放、标准视角、坐标轴和包围盒、画质调节、自动旋转、截图导出。分离式模型的贴图 / `.bin` / `.mtl` 会自动从同目录补齐 |
+
+> 基于随仓库 vendor 的 three.js 0.180.0（MIT），离线可用；`.blend` / `.max` / `.ma` / `.mb` 等内部格式请先导出 glTF。Albedo 项目专有的 NIF 读取器与自研 USDC 解码器不在其中。
 
 ### 桌面小工具
 
@@ -101,7 +109,7 @@ node scripts/bump-version.mjs --dry-run   # 只看结果，不落盘
 ## 目录结构
 
 ```
-src/                  前端：index.html、styles.css、js/（各页逻辑与解码器）、vendor/pdfjs、assets/
+src/                  前端：index.html、styles.css、js/（各页逻辑与解码器）、vendor/pdfjs + vendor/three、assets/
 src-tauri/            Rust 后端：lib.rs（文件 / FFmpeg / yt-dlp 命令）、system.rs（系统信息、电源）、icons/
 scripts/              版本号递增、外部依赖下载、构建前准备
 assets/               应用图标与参考素材
@@ -115,6 +123,8 @@ build-portable.cmd    便携版打包脚本
 - 无前端框架：ES Modules + Canvas / WebGL / Web Worker；TGA、TIFF、DDS、EXR、HDR、PNM、GIF 等格式由 `src/js/` 下的自写解码器处理，HEIC / HEIF 交给 Rust 的 `zune-heic`。
 - `src/js/platform.js` 是前后端的唯一适配层：Tauri 下走 `invoke` 与 asset 协议，浏览器下走 File / Blob，保存同名冲突、序列帧自动补全等逻辑都收在这里。
 - Rust 侧提供文件读写、列表、目录创建、HEIC 解码、FFmpeg 转码、yt-dlp 下载与更新、系统信息与电源操作；大块二进制走原始字节 IPC，避免 base64 开销。
+- 「模型预览」用 importmap 把裸模块 `three` / `three/addons/` 映射到 `src/vendor/three/`，无打包器、完全离线；外部贴图通过 `LoadingManager.setURLModifier` 指向同目录资源生成的 blob URL，并只读取模型中实际引用到的文件名。
+- 模型用外层 pivot 居中缩放（不改动 FBX 等格式自带的单位与旋转），地面网格按模型尺寸自适应；贴图缺失 / 加载失败时剔除空贴图并回退到材质本色，避免模型整只变黑；老式 Phong / Lambert 材质在金属度 / 粗糙度通道显示占位灰并在状态栏提示。
 - 页签显隐 / 排序、主题、置顶等偏好全部存在 `localStorage`，不写配置文件。
 
 ## 已知限制
@@ -124,4 +134,5 @@ build-portable.cmd    便携版打包脚本
 - 「制作 GIF」读取视频依赖 WebView2 的 Media Foundation 解码能力，H.264 / VP9 通常可用，MKV / AVI / WMV 多数不行。
 - 自动关机的计时只在软件内维持，程序退出后计划即失效，到点不会关机。
 - 视频下载能否成功取决于目标站点与网络环境；yt-dlp 可在应用内检查并更新。
+- 3D 预览只做检查与展示，不含编辑、重拓扑与烘焙；CAD / BIM 格式（STEP / IGES / IFC）暂未接入。
 - `批量重命名` 尚未实现，界面按钮处于禁用状态。

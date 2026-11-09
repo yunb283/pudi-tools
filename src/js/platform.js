@@ -44,6 +44,25 @@ export async function fileSizeOf(entry) {
 }
 
 const SUPPORTED_EXTS = ['png', 'tga', 'targa', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'tif', 'tiff'];
+
+// 模型预览页能解析的 3D 格式（three.js 官方加载器，见 src/vendor/three）
+export const MODEL_EXTS = [
+  'glb', 'gltf', 'obj', 'fbx', 'stl', 'ply', 'dae', '3mf', '3ds',
+  'wrl', 'vrml', 'vox', 'amf', 'pcd', 'xyz', 'usd', 'usda', 'usdc', 'usdz',
+  'kmz', 'lwo', 'md2', 'gcode', 'vtk',
+];
+// 模型旁边要一起读进来的资源（贴图、.bin、.mtl 等），用来补上分离式模型的外部引用
+export const MODEL_ASSET_EXTS = [
+  ...SUPPORTED_EXTS,
+  'bin', 'mtl', 'dds', 'hdr', 'rgbe', 'exr', 'ktx', 'ktx2', 'basis',
+  'avif', 'usd', 'usda', 'usdc', 'gltf', 'obj', 'json', 'mtlx',
+];
+export function isModelName(name) {
+  return MODEL_EXTS.includes((name.split('.').pop() || '').toLowerCase());
+}
+export function isModelAssetName(name) {
+  return MODEL_ASSET_EXTS.includes((name.split('.').pop() || '').toLowerCase());
+}
 // 格式转换页的导入范围更宽（含 WebView2 解不了、需要自带解码器的格式）
 export const CONVERT_EXTS = [
   ...SUPPORTED_EXTS,
