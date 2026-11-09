@@ -372,7 +372,8 @@ export function initFlowmap() {
         }
       }
       const n = (2 * k + 1) * (2 * k + 1);
-      const amount = clamp(0.45 + strength * 1.4, 0.45, 1);
+      // 柔化强度单独用一根滑杆控制（1~100 → 2%~100% 的邻域均值混合比例）
+      const amount = clamp(num('fm-blur-num') / 100, 0.02, 1);
       const fade = 0.12;
       for (let y = y0; y < y1; y++) {
         const dy = y + 0.5 - cy;
@@ -407,7 +408,9 @@ export function initFlowmap() {
           const d2 = dx * dx + dy * dy;
           if (d2 >= r2) continue;
           const f = 1 - d2 / r2;
-          const a = f * f * strength;
+          // 擦除和柔化一样用宽羽化，整块笔刷范围内都在往中性色拉，
+          // 否则只有圆心一小块有变化，看起来像没生效。
+          const a = (mode === 'erase' ? Math.min(1, f * 2.2) : f * f) * strength;
           if (a <= 0) continue;
           const p = (y * W + x) * 2;
           data[p] = Math.round(data[p] + (tr - data[p]) * a);
@@ -450,7 +453,9 @@ export function initFlowmap() {
     const speed = Math.min(1, dist / n / (radius * 1.5));
     const minF = (1 - sens) * 0.8;
     const pressure = minF + (1 - minF) * speed;
-    const strength = clamp(num('fm-strength-num') / 100, 0.01, 1) * (0.35 + 0.65 * pressure);
+    // 擦除是覆盖式清除，不吃「流动强度」（默认 5% 只会抹掉几个百分点，看起来像没生效）
+    const strength =
+      mode === 'erase' ? 0.8 : clamp(num('fm-strength-num') / 100, 0.01, 1) * (0.35 + 0.65 * pressure);
     const ux = dx / dist;
     const uy = dy / dist;
     const tr = mode === 'erase' || mode === 'blur' ? NEUTRAL : Math.round((ux + 1) * 127.5);
@@ -899,6 +904,7 @@ export function initFlowmap() {
   link('fm-radius', 'fm-radius-num', requestDraw);
   link('fm-strength', 'fm-strength-num');
   link('fm-pressure', 'fm-pressure-num');
+  link('fm-blur', 'fm-blur-num');
   link('fm-opacity', 'fm-opacity-num', requestDraw);
   link('fm-speed', 'fm-speed-num');
   link('fm-dist', 'fm-dist-num');
@@ -911,6 +917,7 @@ export function initFlowmap() {
     ['fm-radius', 40], ['fm-radius-num', 40],
     ['fm-strength', 5], ['fm-strength-num', 5],
     ['fm-pressure', 70], ['fm-pressure-num', 70],
+    ['fm-blur', 60], ['fm-blur-num', 60],
     ['fm-view-mode', 'flow'],
     ['fm-opacity', 65], ['fm-opacity-num', 65],
     ['fm-seamless', true], ['fm-grid', false],
