@@ -656,13 +656,13 @@ export function initVideoDownload() {
     if (d) dirInput.value = d;
   }
 
-  // 默认下载目录：系统下载目录下的「图像工具箱」文件夹
+  // 默认下载目录：系统下载目录下的「布丁工具箱」文件夹
   async function defaultDownloadDir() {
     try {
       const d = await window.__TAURI__.path.downloadDir();
       if (d) {
         const sep = d.includes('\\') ? '\\' : '/';
-        return d.endsWith(sep) ? `${d}图像工具箱` : `${d}${sep}图像工具箱`;
+        return d.endsWith(sep) ? `${d}布丁工具箱` : `${d}${sep}布丁工具箱`;
       }
     } catch (_) {}
     return null;

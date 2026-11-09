@@ -1640,7 +1640,8 @@ fn exe_dir_writable() -> bool {
 fn installed_in_registry() -> bool {
     use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
     use winreg::RegKey;
-    const APP_NAME: &str = "图像工具箱";
+    // 兼容旧名：老版本卸载项还叫「图像工具箱」，升级后别把它误判成绿色版
+    const APP_NAMES: [&str; 2] = ["布丁工具箱", "图像工具箱"];
     let roots = [
         (HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
         (HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
@@ -1655,7 +1656,7 @@ fn installed_in_registry() -> bool {
                 continue;
             };
             if let Ok(name) = sk.get_value::<String, _>("DisplayName") {
-                if name.contains(APP_NAME) {
+                if APP_NAMES.iter().any(|n| name.contains(n)) {
                     return true;
                 }
             }
@@ -1978,7 +1979,7 @@ async fn ytdlp_download(
     args.push(output.clone());
     args.push(url.clone());
 
-    // 目标目录可能还不存在（默认下载目录\图像工具箱），先建出来
+    // 目标目录可能还不存在（默认下载目录\布丁工具箱），先建出来
     if let Some(parent) = Path::new(&output).parent() {
         let _ = fs::create_dir_all(parent);
     }

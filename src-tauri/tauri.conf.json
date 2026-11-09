@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "图像工具箱",
-  "mainBinaryName": "图像工具箱",
-  "version": "0.1.22",
+  "productName": "布丁工具箱",
+  "mainBinaryName": "布丁工具箱",
+  "version": "0.1.26",
   "identifier": "com.spritetools.seqtool",
   "build": {
     "frontendDist": "../src"
@@ -11,7 +11,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "图像工具箱",
+        "title": "布丁工具箱",
         "width": 1100,
         "height": 720,
         "minWidth": 1020,

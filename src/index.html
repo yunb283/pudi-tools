@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>图像工具箱</title>
+    <title>布丁工具箱</title>
     <!-- 先给一层底色:外链样式表还没到位的那几帧不至于白屏(与 --bg-app 保持一致) -->
     <style>
       html,
@@ -28,7 +28,7 @@
     <!-- 自绘标题栏:系统标题栏已关闭(decorations: false),拖拽、最小化、最大化、关闭都在这里 -->
     <div class="titlebar" data-tauri-drag-region="deep">
       <img class="tb-icon" src="assets/app-icon.png" alt="" draggable="false" />
-      <span class="tb-title">图像工具箱</span>
+      <span class="tb-title">布丁工具箱</span>
       <!-- 工具列表:只管页签显示与否,勾掉哪个就从这一行拿走,不动各页自己的功能 -->
       <div class="tlist-wrap">
         <button
@@ -1761,7 +1761,7 @@
         </div>
         <label class="chk">
           <input type="checkbox" id="dl-save-default" checked />
-          <span>保存到默认下载目录(下载\图像工具箱)</span>
+          <span>保存到默认下载目录(下载\布丁工具箱)</span>
         </label>
         <label class="chk">
           <input type="checkbox" id="dl-save-custom" />
