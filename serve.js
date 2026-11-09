@@ -1,9 +1,11 @@
 // 极简静态文件服务器:用 Node 内置模块,无需任何依赖.
 // 用法:node serve.js [端口]   默认端口 8080
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, 'src');
 const port = Number(process.argv[2]) || 8080;
 
