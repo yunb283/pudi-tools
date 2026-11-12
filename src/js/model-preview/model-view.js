@@ -11,7 +11,7 @@ import {
   pickUvTriangle, pickUvTrianglesInRect, uvLayoutView, UV_DEFAULT_ZOOM, UV_MIN_ZOOM, UV_COLORS,
 } from './model-uv.js';
 
-export function createModelView({ canvas, bar, animBar, stage, info, buttons, viewSelect,
+export function createModelView({ canvas, bar, animBar, stage, info, buttons, viewSelect, viewportTools,
   uvBar = null, uvPanel = null, uvControls = {},
   onImportTexture, onExportUv,
   animControls, isVisible }) {
@@ -47,7 +47,7 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
   // 左键拖拽默认平移画布，按住 Shift 才是框选；单击（没移动）仍是点选元素。
   let uvSelDrag = null;                    // { mode:'pan'|'select', c0, x0,y0,x1,y1, moved }
   let uvGripDrag = null;                   // UV 窗口左下角的尺寸拖拽
-  const UV_CANVAS_MIN = 160, UV_CANVAS_MAX = 560;
+  const UV_CANVAS_MIN = 160, UV_CANVAS_DEFAULT = 260, UV_CANVAS_MAX = 560;
   const uvSizeKey = 'pudi.modelUvCanvasSize';
   let uvPreferredSize = null;
   try {
@@ -79,9 +79,10 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
     const dpr = Math.min(window.devicePixelRatio || 1, 2) * scale;
     const w = Math.max(1, canvas.clientWidth);
     const h = Math.max(1, canvas.clientHeight);
-    const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+    const pw = Math.max(1, Math.round(w * dpr)), ph = Math.max(1, Math.round(h * dpr));
     if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // 实际位图尺寸已经取整，按它换算，确保重绘清到最后一行和一列像素。
+    ctx.setTransform(pw / w, 0, 0, ph / h, 0, 0);
     return { w, h };
   }
 
@@ -325,7 +326,8 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
     for (let i = 0; i < sets.length; i++) {
       const o = document.createElement('option');
       o.value = String(i);
-      o.textContent = sets[i].name;
+      o.textContent = sets[i].generated ? `UV${i}` : sets[i].name;
+      o.title = sets[i].name;
       sel.appendChild(o);
     }
     uvSetIndex = Math.min(uvSetIndex, Math.max(0, sets.length - 1));
@@ -383,6 +385,7 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
         picked,
       ].filter(Boolean).join(' · ');
       uvControls.panelInfo.textContent = status;
+      uvControls.panelInfo.title = status;
     }
   }
 
@@ -452,6 +455,7 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
   function syncUv({ repaint = true } = {}) {
     if (!model) return;
     const s = uvSet();
+    if (uvControls.set) uvControls.set.title = s?.name || '';
     view.uv = uvData();
     view.texture = texture;
     view.uvWire = uvWireOn;
@@ -484,7 +488,10 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
     paintInfo();
     if (uvControls.clearTex) uvControls.clearTex.disabled = !uvBitmap;
     if (uvControls.panelName && s) uvControls.panelName.textContent = s.name;
-    if (uvPanelOn) fitUvPanel();
+    if (uvPanelOn) {
+      fitUvPanel();
+      drawLayout();
+    }
     if (repaint) fullRepaint();
   }
 
@@ -793,50 +800,63 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
       query.addEventListener('change', () => { drawLayout(); watchUvDpi(); }, { once: true });
     };
     watchUvDpi();
-    window.addEventListener('resize', () => fitUvPanel());
+    const uvBoundsObserver = new ResizeObserver(() => {
+      fitUvPanel(uvGripDrag?.requestedSize);
+    });
+    uvBoundsObserver.observe(stage);
+    uvBoundsObserver.observe(viewportTools);
   }
 
   function fitUvPanel(size) {
     const panel = uvPanel, c = uvControls.canvas;
     if (!uvPanelOn || !panel || !c || panel.hidden) return;
-    const current = uvCanvasSize().width;
-    // scrollHeight includes the footer even when a tiny window needs a scrollbar.
-    const chrome = panel.scrollHeight - c.clientHeight + panel.offsetHeight - panel.clientHeight;
-    const available = Math.min(stage.clientWidth - 36, stage.clientHeight - 16 - chrome);
-    const next = Math.max(UV_CANVAS_MIN, Math.floor(Math.min(UV_CANVAS_MAX, available, size ?? uvPreferredSize ?? current)));
-    if (next !== current) {
-      panel.style.width = `${next + 20}px`;
-      c.style.width = c.style.height = `${next}px`;
-    }
-    drawLayout();
+    if (!stage.clientWidth || !stage.clientHeight) return;
+    const frameWidth = panel.offsetWidth - c.offsetWidth;
+    const frameHeight = panel.offsetHeight - c.offsetHeight;
+    const available = Math.min(
+      stage.clientWidth - 16 - frameWidth,
+      stage.clientHeight - viewportTools.offsetHeight - 30 - frameHeight,
+    );
+    const preferred = Math.max(UV_CANVAS_MIN, size ?? uvPreferredSize ?? UV_CANVAS_DEFAULT);
+    const next = Math.max(1, Math.floor(Math.min(UV_CANVAS_MAX, available, preferred)));
+    const panelWidth = `${next + frameWidth}px`;
+    if (panel.style.width !== panelWidth) panel.style.width = panelWidth;
     return next;
   }
 
-  // ---- UV 窗口左下角拖拽缩放：画布保持正方形，改完立刻按新尺寸重画 ----
-  // 面板右沿是 fixed 的（right:14px），变宽时左沿往左长。手柄挪到左下角后，
-  // 「向左 / 向下拖」才是放大，所以 dx 取反、dy 照旧，再按较大的那个定尺寸。
+  // 面板右上角固定，左下角沿位移较大的方向等比缩放画布。
   if (uvControls.grip && uvControls.panel && uvControls.canvas) {
     const grip = uvControls.grip;
-    grip.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !e.isPrimary) return;
       e.stopPropagation();
       e.preventDefault();
-      uvGripDrag = { x: e.clientX, y: e.clientY, size: uvCanvasSize().width };
+      grip.setPointerCapture(e.pointerId);
+      uvGripDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, size: uvCanvasSize().width };
     });
-    window.addEventListener('mousemove', (e) => {
-      if (!uvGripDrag) return;
-      const d = Math.max(uvGripDrag.x - e.clientX, e.clientY - uvGripDrag.y);
-      uvGripDrag.displayed = fitUvPanel(uvGripDrag.size + d);
+    grip.addEventListener('pointermove', (e) => {
+      if (uvGripDrag?.id !== e.pointerId) return;
+      const dx = uvGripDrag.x - e.clientX;
+      const dy = e.clientY - uvGripDrag.y;
+      uvGripDrag.requestedSize = uvGripDrag.size + (Math.abs(dx) > Math.abs(dy) ? dx : dy);
+      fitUvPanel(uvGripDrag.requestedSize);
     });
-    window.addEventListener('mouseup', (e) => {
-      if (!uvGripDrag || e.button !== 0) return;
-      const { size, displayed } = uvGripDrag;
+    grip.addEventListener('pointerup', (e) => {
+      if (uvGripDrag?.id !== e.pointerId) return;
+      const { requestedSize } = uvGripDrag;
       uvGripDrag = null;
-      if (displayed !== undefined && displayed !== size) rememberUvSize(displayed);
-    }, true);
+      if (requestedSize !== undefined) {
+        rememberUvSize(Math.min(UV_CANVAS_MAX, Math.max(UV_CANVAS_MIN, requestedSize)));
+      }
+    });
+    grip.addEventListener('lostpointercapture', (e) => {
+      if (uvGripDrag?.id !== e.pointerId) return;
+      uvGripDrag = null;
+      fitUvPanel();
+    });
     grip.addEventListener('dblclick', (e) => {
       e.stopPropagation();
-      rememberUvSize(UV_CANVAS_MIN);
+      rememberUvSize(UV_CANVAS_DEFAULT);
       fitUvPanel();
     });
   }
@@ -1035,7 +1055,9 @@ export function createModelView({ canvas, bar, animBar, stage, info, buttons, vi
     view.uvPicks = null;
     view.uvMarks = null;
     if (info) info.setAttribute('hidden', '');
-    try { ctx.clearRect(0, 0, canvas.width, canvas.height); } catch (_) { /* 画布可能还没尺寸 */ }
+    canvas.width = canvas.height = 1;
+    const uvCanvas = uvControls.canvas;
+    if (uvCanvas) uvCanvas.width = uvCanvas.height = 1;
   }
 
   return {

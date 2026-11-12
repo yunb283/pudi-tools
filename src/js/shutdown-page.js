@@ -37,6 +37,7 @@ export function initShutdown() {
   const countBox = $('sd-count-box');
   const clockBox = $('sd-clock-box');
   const minsIn = $('sd-mins');
+  const presetBtns = countBox.querySelectorAll('button[data-mins]');
   const timeIn = $('sd-time');
   const clockHint = $('sd-clock-hint');
   const warnClose = $('sd-warn-close');
@@ -53,6 +54,7 @@ export function initShutdown() {
   const ringFill = $('sd-ring-fill');
   const countdownEl = $('sd-countdown');
   const tabEl = $('tab-shutdown');
+  const settingsInputs = [actOff, actReboot, trigCount, trigClock, minsIn, timeIn, ...presetBtns];
 
   let action = 'shutdown';
   let trigger = 'count';
@@ -196,13 +198,7 @@ export function initShutdown() {
     try {
       await window.__TAURI__.core.invoke('power_action', { action, delay: GRACE_SEC });
     } catch (ex) {
-      state = 'idle';
-      abortBtn.hidden = true;
-      startBtn.disabled = false;
-      cancelBtn.disabled = true;
-      resetBtn.disabled = false;
-      stateEl.textContent = '未开始';
-      setIdleRing();
+      disarm();
       setStatus(`${label}没排上：` + String(ex?.message ?? ex), true);
       return;
     }
@@ -253,9 +249,7 @@ export function initShutdown() {
     startBtn.disabled = true;
     cancelBtn.disabled = false;
     resetBtn.disabled = true;
-    for (const b of [actOff, actReboot, trigCount, trigClock]) b.disabled = true;
-    minsIn.disabled = true;
-    timeIn.disabled = true;
+    for (const input of settingsInputs) input.disabled = true;
     setStatus(`已排定：${fmtClock(targetTs)} ${action === 'shutdown' ? '关机' : '重启'}。本软件退出后这个计划就作废`);
     tick();
     tickTimer = setInterval(tick, 250);
@@ -270,9 +264,7 @@ export function initShutdown() {
     resetBtn.disabled = false;
     startBtn.textContent = '开始计时';
     riskAckAt = 0;
-    for (const b of [actOff, actReboot, trigCount, trigClock]) b.disabled = false;
-    minsIn.disabled = false;
-    timeIn.disabled = false;
+    for (const input of settingsInputs) input.disabled = false;
     stateEl.textContent = '未开始';
     setIdleRing();
     refreshTarget();
@@ -304,6 +296,12 @@ export function initShutdown() {
     setStatus('已恢复默认设置');
   }
 
+  function updateMinutes() {
+    riskAckAt = 0;
+    startBtn.textContent = '开始计时';
+    refreshTarget();
+  }
+
   actOff.addEventListener('click', () => pickAction('shutdown'));
   actReboot.addEventListener('click', () => pickAction('reboot'));
   trigCount.addEventListener('click', () => pickTrigger('count'));
@@ -312,11 +310,14 @@ export function initShutdown() {
   cancelBtn.addEventListener('click', () => disarm('已取消计时'));
   abortBtn.addEventListener('click', abort);
   resetBtn.addEventListener('click', resetDefaults);
-  minsIn.addEventListener('input', () => {
-    riskAckAt = 0;
-    if (startBtn.textContent !== '开始计时') startBtn.textContent = '开始计时';
-    refreshTarget();
-  });
+  minsIn.addEventListener('input', updateMinutes);
+  for (const button of presetBtns) {
+    button.addEventListener('click', () => {
+      if (state !== 'idle') return;
+      minsIn.value = button.dataset.mins;
+      updateMinutes();
+    });
+  }
   timeIn.addEventListener('input', () => {
     riskAckAt = 0;
     refreshTarget();

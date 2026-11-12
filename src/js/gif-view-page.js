@@ -17,7 +17,7 @@ import {
   saveBlob,
 } from './platform.js';
 import { humanSize } from './decode.js';
-import { parseGif, createGifCompositor, gifTimeline, frameAtTime } from './gif-decode.js';
+import { parseGif, createGifCompositor, gifDelaysMs, frameAtTime } from './gif-decode.js';
 import { gifParams, gifHeader, gifFrameBytes, gifTableFor, gifTrailer, gifConcat } from './gif.js';
 import { createIoButtons } from './io-buttons.js';
 
@@ -80,6 +80,15 @@ export function initGifView({ view }) {
   const outInfo = $('gv-out-info');
   const exportBtn = $('gv-export');
   const exportFrameBtn = $('gv-export-frame');
+  const framePanel = $('gv-frames');
+  const strip = $('gv-strip');
+  const frameMenu = $('gv-frame-menu');
+  const framesCount = $('gv-frames-count');
+  const emptyFrames = $('gv-frames-empty');
+  const hideFramesBtn = $('gv-frames-hide');
+  const restoreFramesBtn = $('gv-frames-restore');
+  const deleteFramesBtn = $('gv-frames-delete');
+  const saveFramesBtn = $('gv-frames-save');
   const io = createIoButtons($('gv-io'), setStatus);
 
   // 合成器给的是整幅 RGBA，先进这张 canvas 再交给视图缩放画出去。
@@ -94,17 +103,23 @@ export function initGifView({ view }) {
 
   let parsed = null; // parseGif 的结果：尺寸、循环次数、每帧的补丁和延时
   let comp = null; // 逐帧合成器，状态只能往前推
-  let srcClock = null; // 原文件的时间轴（每帧自己的延时）
+  let sourceMs = []; // 原文件每帧的延时
   let play = null; // 播放用的时间轴：已按速度倍率缩放，且只覆盖选中的帧区间
   let drop = 0; // 抽帧档位：保留帧的间隔是 2^drop
   let keep = []; // 逻辑帧号 -> 源帧号（抽帧后两套编号的唯一桥梁）
-  let spanMs = []; // 逻辑帧的时长 = 它和下一保留帧之间所有源帧延时之和
+  let spanMs = []; // 逻辑帧时长，含抽帧合并的延时
+  const logicalBySource = new Map();
+  const hiddenFrames = new Set();
+  const deletedFrames = new Set();
+  const selectedFrames = new Set();
+  let selectionAnchor = null;
   let name = '';
   let sourcePath = null;
   let fileSize = 0;
   let frameIndex = 0; // 逻辑帧号（抽帧后的编号）
   let cutA = 0; // 帧区间：含头含尾的逻辑帧号
   let cutB = 0;
+  let sourceRange = null; // 手选区间的源帧边界；恢复边界帧后可回到原区间
   let speed = 1; // 速度倍率：1 就是源文件自己的帧率
   let playing = false;
   let playStart = 0; // 起播的绝对时刻，已把当前帧折进基准，所以暂停后是从那一帧接着播
@@ -114,7 +129,7 @@ export function initGifView({ view }) {
   let frDrag = null;
   let runId = 0; // 读文件是异步的，后一次点掉前一次的结果
   let exportId = 0; // 同上：导出中途换文件或清空就作废
-  let exporting = false; // GIF 正在编码时不接「导出当前帧」：两件事共用同一批画布和缓存
+  let exporting = false;
 
   // 合成好的一帧缓存：源帧号 -> 槽位下标，像素本身在 slots 里循环复用。
   // 关键是「不再每帧新分配」：800x600 一帧 1.9MB，拖一下滑块就是几百 MB 垃圾，
@@ -147,9 +162,12 @@ export function initGifView({ view }) {
     status.classList.toggle('warn', !!warn);
   }
 
-  function setEnabled(on) {
+  function setEnabled() {
+    const ready = !!parsed && !exporting;
+    const playable = ready && keep.length > 0;
+    clearBtn.disabled = !parsed;
+    for (const el of [dropSel, scaleSel, saveOrigChk]) el.disabled = !ready;
     for (const el of [
-      clearBtn,
       resetBtn,
       prevBtn,
       nextBtn,
@@ -159,22 +177,19 @@ export function initGifView({ view }) {
       frAIn,
       frBIn,
       frAllBtn,
-      dropSel,
-      scaleSel,
       nameIn,
       exportBtn,
       exportFrameBtn,
     ]) {
-      el.disabled = !on;
+      el.disabled = !playable;
     }
     // 单帧 GIF 没什么可播的，按钮留着只会让人以为坏了
     syncPlayBtn();
-    frBand.hidden = !on;
-    frTl.classList.toggle('loaded', on);
+    syncStripActions();
   }
 
   function syncPlayBtn() {
-    playBtn.disabled = !parsed || selFrames() < 2;
+    playBtn.disabled = exporting || selFrames() < 2;
   }
 
   // 该播几圈：NETSCAPE 扩展缺省=1 次，循环数 0=无限，N=N 次
@@ -183,20 +198,26 @@ export function initGifView({ view }) {
     return parsed.loop === 0 ? Infinity : parsed.loop || 1;
   }
 
-  const selFrames = () => (parsed ? cutB - cutA + 1 : 0);
+  const selFrames = () => (keep.length ? cutB - cutA + 1 : 0);
 
   // 抽帧：从第 1 帧起每 2^drop 帧留 1 帧（1 档隔一删一，2 档再走一遍 = 每 4 帧留 1）。
-  // 抽掉的帧把时长并进后面那个保留帧，所以一圈总时长不变，只是节奏变粗
+  // 隐藏或删除先扣掉帧和时长；抽帧只把跳过的时长并进前一保留帧。
   function rebuildKeep() {
     const n = parsed ? parsed.frames.length : 0;
     const stride = 1 << drop;
     keep = [];
     spanMs = [];
-    for (let i = 0; i < n; i += stride) {
-      let sum = 0;
-      for (let j = i; j < Math.min(n, i + stride); j++) sum += srcClock.ms[j];
-      keep.push(i);
-      spanMs.push(sum);
+    logicalBySource.clear();
+    let eligible = 0;
+    for (let i = 0; i < n; i++) {
+      if (hiddenFrames.has(i) || deletedFrames.has(i)) continue;
+      if (eligible++ % stride === 0) {
+        logicalBySource.set(i, keep.length);
+        keep.push(i);
+        spanMs.push(sourceMs[i]);
+      } else {
+        spanMs[spanMs.length - 1] += sourceMs[i];
+      }
     }
   }
 
@@ -214,7 +235,7 @@ export function initGifView({ view }) {
   // 速度倍率：倍率作用在「快慢」上，所以除到每帧延时上（3 倍速 = 每帧只留三分之一时间）。
   // 用同一个倍率而不是「重算成等长」，原文件里快慢不一的节奏（比如末帧停得久）才不会被抹平
   function rebuildPlay() {
-    if (!parsed) {
+    if (!keep.length) {
       play = null;
       updateFpsNow();
       return;
@@ -223,13 +244,15 @@ export function initGifView({ view }) {
     const cum = new Array(ms.length);
     let t = 0;
     for (let i = 0; i < ms.length; i++) {
-      ms[i] = Math.max(MIN_MS, Math.round(spanMs[cutA + i] / speed));
+      ms[i] = frameDelay(cutA + i);
       cum[i] = t;
       t += ms[i];
     }
     play = { ms, cum, total: t || 1 };
     updateFpsNow();
   }
+
+  const frameDelay = (index) => Math.max(MIN_MS, Math.round(spanMs[index] / speed));
 
   // 左下角时间旁边的当前帧率：这一圈的实际平均帧率，速度倍率和抽帧都已经算在里面
   function updateFpsNow() {
@@ -247,6 +270,10 @@ export function initGifView({ view }) {
       return;
     }
     const n = keep.length;
+    if (!n) {
+      info.textContent = `${parsed.width}x${parsed.height} · 无可播放帧`;
+      return;
+    }
     let minMs = Infinity;
     let maxMs = 0;
     for (const ms of spanMs) {
@@ -254,27 +281,31 @@ export function initGifView({ view }) {
       if (ms > maxMs) maxMs = ms;
     }
     // 抽帧不改一圈时长，只改帧数，所以平均帧率按抽帧后的帧数算
-    const avgFps = srcClock.total ? (n / srcClock.total) * 1000 : 0;
+    const total = spanMs.reduce((sum, ms) => sum + ms, 0);
+    const avgFps = (n / total) * 1000;
     const delay = minMs === maxMs ? `每帧 ${minMs}ms` : `每帧 ${minMs}~${maxMs}ms`;
     const rep = repeatCount();
     const loopTxt = rep === Infinity ? '无限循环' : rep === 1 ? '不循环（播 1 次）' : `循环 ${rep} 次`;
     const cut = selFrames() === n ? '' : ` · 已选 ${cutA + 1}~${cutB + 1}`;
-    const cnt = drop ? `${n} 帧（原 ${parsed.frames.length}，抽帧 1/${1 << drop}）` : `${n} 帧`;
+    const cnt = n !== parsed.frames.length ? `${n} 帧（原 ${parsed.frames.length}）` : `${n} 帧`;
     info.textContent =
       `${parsed.width}x${parsed.height} · ${cnt} · ${delay}` +
-      `（平均 ${avgFps.toFixed(1)}fps）· 一圈 ${fmtTime(srcClock.total)} · ${loopTxt}` +
+      `（平均 ${avgFps.toFixed(1)}fps）· 一圈 ${fmtTime(total)} · ${loopTxt}` +
       ` · ${humanSize(fileSize)}${cut}`;
   }
 
   function updateOutInfo() {
     if (!parsed) return;
+    if (!play) {
+      outInfo.textContent = '0 帧 · 00:00.00';
+      return;
+    }
     const [w, h] = outSize();
     outInfo.textContent = `${w}x${h} · ${selFrames()} 帧 · ${fmtTime(play.total)}`;
   }
 
-  function outSize() {
+  function outSize(c = cropRect()) {
     const s = Number(scaleSel.value) / 100;
-    const c = cropRect();
     return [Math.max(1, Math.round(c.w * s)), Math.max(1, Math.round(c.h * s))];
   }
 
@@ -290,7 +321,11 @@ export function initGifView({ view }) {
       return;
     }
     const k = frameIndex - cutA;
-    frameRange.value = String(k + 1);
+    frameRange.value = String(Math.max(1, Math.min(sel, k + 1)));
+    if (k < 0 || k >= sel) {
+      frameLabel.textContent = `区间外 · 源 ${srcFrame(frameIndex) + 1}/${parsed.frames.length}`;
+      return;
+    }
     frameLabel.textContent =
       sel === n
         ? `第 ${k + 1}/${n} 帧`
@@ -320,9 +355,11 @@ export function initGifView({ view }) {
     cropBtn.classList.toggle('on', cropOn);
   }
 
-  function showFrame(i) {
-    if (!comp || !parsed || !parsed.frames.length) return;
-    frameIndex = Math.min(cutB, Math.max(cutA, i));
+  function showFrame(i, outsideRange = false) {
+    if (!comp || !keep.length) return;
+    frameIndex = outsideRange
+      ? Math.max(0, Math.min(keep.length - 1, i))
+      : Math.min(cutB, Math.max(cutA, i));
     const rgba = frameOf(frameIndex);
     if (!rgba) return;
     if (paint.width !== parsed.width || paint.height !== parsed.height) {
@@ -333,14 +370,17 @@ export function initGifView({ view }) {
     pctx.putImageData(new ImageData(rgba, parsed.width, parsed.height), 0, 0);
     view.setImage(paint, parsed.width, parsed.height);
     const at = frameIndex - cutA;
-    timeLabel.textContent = `${fmtTime(play.cum[at])} / ${fmtTime(play.total)}`;
+    const elapsed = play.cum[at];
+    timeLabel.textContent = `${elapsed === undefined ? '—' : fmtTime(elapsed)} / ${fmtTime(play.total)}`;
     updatePos();
+    syncCurrentCard();
   }
 
   // 合成器只能往前推，倒退要重跑；这一层缓存把「最近看过的帧」留着，
   // 连点上一帧/下一帧或来回拖时一次合成都省掉。键是源帧号：换抽帧档位时同一帧不用重合成
-  function frameOf(k) {
-    const src = srcFrame(k);
+  const frameOf = (k) => frameBySource(srcFrame(k));
+
+  function frameBySource(src) {
     const hit = cache.get(src);
     if (hit !== undefined) return slots[hit];
     if (!slotN) return null;
@@ -390,14 +430,15 @@ export function initGifView({ view }) {
       scrubRaf = 0;
     }
     if (playing) {
+      if (frameIndex < cutA || frameIndex > cutB) showFrame(cutA);
       playStart = performance.now() - play.cum[frameIndex - cutA];
       playRaf = requestAnimationFrame(tick);
-    }
+    } else scheduleThumbnails();
   }
 
   function stepFrame(delta) {
-    if (!parsed) return;
-    if (playing) setPlaying(false); // 步进是「看清这一帧」，在播就先停住
+    if (!keep.length || exporting) return;
+    setPlaying(false);
     showFrame(frameIndex + delta);
   }
 
@@ -420,17 +461,24 @@ export function initGifView({ view }) {
   // 播放范围和导出帧数都变了，中途那些位置没有意义）
   function setFrameSel(a, b) {
     const n = keep.length;
-    cutA = Math.min(n - 1, Math.max(0, a));
-    cutB = Math.min(n - 1, Math.max(cutA, b));
+    cutA = n ? Math.min(n - 1, Math.max(0, a)) : 0;
+    cutB = n ? Math.min(n - 1, Math.max(cutA, b)) : 0;
     syncFrUI();
   }
 
-  function frameSelCommitted() {
+  function frameSelCommitted(rememberRange = true) {
+    if (rememberRange) sourceRange = selFrames() === keep.length ? null : coveredSrcRange();
     rebuildPlay();
     updateOutInfo();
     updateInfo();
     syncPlayBtn();
-    showFrame(Math.min(cutB, Math.max(cutA, frameIndex)));
+    if (keep.length) showFrame(frameIndex);
+    else {
+      view.setImage(null);
+      timeLabel.textContent = '00:00.00 / 00:00.00';
+      updatePos();
+      syncCurrentCard();
+    }
     if (playing) playStart = performance.now() - play.cum[frameIndex - cutA];
   }
 
@@ -441,7 +489,7 @@ export function initGifView({ view }) {
 
   function frDown(e) {
     const n = keep.length;
-    if (n < 2) return;
+    if (n < 2 || exporting) return;
     const which =
       e.target === frAGrip ? 'a' : e.target === frBGrip ? 'b' : e.target === frBand ? 'band' : null;
     if (!which) return;
@@ -476,34 +524,367 @@ export function initGifView({ view }) {
     frameSelCommitted();
   }
 
-  // 换抽帧档位：先把选区换算成它实际盖住的源帧区间，再按新格子的编号落回去。
-  // 落在被抽掉的位置就顺延到下一个保留帧，所以区间只会变窄不会变空
-  function applyDrop(next) {
-    if (!parsed || next === drop) return;
-    const [a, b] = coveredSrcRange();
+  // 编辑前记录源帧范围，重新编号后仍选中同一段。全区间则始终覆盖所有可播放帧。
+  function rebuildEditedTimeline(edit) {
+    if (frDrag) frUp();
+    const [a, b] = sourceRange ?? [0, parsed.frames.length - 1];
     const cur = srcFrame(frameIndex);
-    drop = next;
+    setPlaying(false);
+    edit();
     rebuildKeep();
-    const loOf = (src) => {
-      for (let k = 0; k < keep.length; k++) if (keep[k] >= src) return k;
-      return keep.length - 1;
-    };
-    const hiOf = (src) => {
-      for (let k = keep.length - 1; k >= 0; k--) if (keep[k] <= src) return k;
-      return 0;
-    };
+    const loOf = (src) => keep.findIndex((index) => index >= src);
+    const hiOf = (src) => keep.findLastIndex((index) => index <= src);
     const lo = loOf(a);
-    setFrameSel(lo, Math.max(lo, hiOf(b)));
-    frameIndex = Math.min(cutB, Math.max(cutA, loOf(cur)));
-    frameSelCommitted();
+    const start = lo < 0 ? keep.length - 1 : lo;
+    setFrameSel(start, Math.max(start, hiOf(b)));
+    const next = cur === undefined ? cutA : loOf(cur);
+    frameIndex = next < 0 ? cutB : next;
+    frameSelCommitted(false);
+    setEnabled();
+    syncFrameCards();
+    scheduleThumbnails();
   }
+
+  function applyDrop(next) {
+    if (!parsed || exporting || next === drop) return;
+    rebuildEditedTimeline(() => { drop = next; });
+  }
+
+  // ---------- 帧缩略图 ----------
+
+  const cards = new Map();
+  const visibleCards = new Set();
+  const thumbSource = document.createElement('canvas');
+  const thumbCtx = thumbSource.getContext('2d');
+  let thumbRaf = 0;
+  let currentCard = null;
+  let stripDrag = null;
+  let suppressStripClick = false;
+  let menuAnchor = null;
+  const thumbObserver = new IntersectionObserver((entries) => {
+    for (const { target, isIntersecting } of entries) {
+      const card = cards.get(Number(target.dataset.source));
+      if (card?.button !== target) continue;
+      if (isIntersecting) visibleCards.add(card);
+      else {
+        visibleCards.delete(card);
+        card.image.replaceChildren();
+      }
+    }
+    scheduleThumbnails();
+  }, { root: strip, rootMargin: '0px 120px' });
+
+  function scheduleThumbnails() {
+    if (thumbRaf || !parsed || exporting || playing) return;
+    if ([...visibleCards].some((card) => !card.image.firstChild)) {
+      thumbRaf = requestAnimationFrame(drawThumbnails);
+    }
+  }
+
+  function drawThumbnails() {
+    thumbRaf = 0;
+    if (!parsed || exporting || playing) return;
+    const { width, height } = parsed;
+    if (thumbSource.width !== width) thumbSource.width = width;
+    if (thumbSource.height !== height) thumbSource.height = height;
+    const scale = Math.min(108 / width, 72 / height);
+    const until = performance.now() + 6;
+    // 只合成视口附近的缩略图，复用预览的缓存，大文件打开时无需先合成每一帧。
+    for (const card of visibleCards) {
+      if (card.image.firstChild) continue;
+      thumbCtx.putImageData(new ImageData(frameBySource(card.source), width, height), 0, 0);
+      const thumb = document.createElement('canvas');
+      thumb.width = Math.max(1, Math.round(width * scale));
+      thumb.height = Math.max(1, Math.round(height * scale));
+      thumb.getContext('2d').drawImage(thumbSource, 0, 0, thumb.width, thumb.height);
+      card.image.append(thumb);
+      if (performance.now() >= until) break;
+    }
+    scheduleThumbnails();
+  }
+
+  function syncCurrentCard() {
+    const next = cards.get(srcFrame(frameIndex))?.button;
+    if (currentCard === next) return;
+    currentCard?.removeAttribute('aria-current');
+    currentCard = next;
+    currentCard?.setAttribute('aria-current', 'true');
+  }
+
+  function syncStripActions() {
+    const count = selectedFrames.size;
+    const selectedHidden = [...selectedFrames].filter((src) => hiddenFrames.has(src)).length;
+    hideFramesBtn.disabled = exporting || count === selectedHidden;
+    restoreFramesBtn.disabled = exporting || selectedHidden === 0;
+    deleteFramesBtn.disabled = saveFramesBtn.disabled = exporting || count === 0;
+    framesCount.textContent = `${keep.length} 帧播放 · 已选 ${count} 帧` +
+      (hiddenFrames.size ? ` · ${hiddenFrames.size} 帧隐藏` : '');
+  }
+
+  function syncFrameCards() {
+    for (const [src, card] of cards) {
+      const index = logicalBySource.get(src);
+      const hidden = hiddenFrames.has(src);
+      const label = hidden ? '已隐藏' : index === undefined ? '抽帧跳过' : '';
+      const delay = index === undefined ? sourceMs[src] : frameDelay(index);
+      card.button.classList.toggle('excluded', !!label);
+      card.button.classList.toggle('is-hidden', hidden);
+      card.delay.textContent = `${delay} ms`;
+      card.hiddenBadge.hidden = !hidden;
+      card.hiddenBadge.textContent = hidden ? label : '';
+      card.state.textContent = hidden ? '' : label;
+      card.state.hidden = hidden || !label;
+      card.button.title = `源第 ${src + 1} 帧 · ${delay} ms${label ? ' · ' + label : ''}`;
+      card.button.setAttribute('aria-label', card.button.title);
+    }
+    emptyFrames.hidden = cards.size !== 0;
+    strip.hidden = cards.size === 0;
+    syncCurrentCard();
+    syncStripSelection();
+  }
+
+  function syncStripSelection() {
+    for (const [src, { button }] of cards) {
+      const value = String(selectedFrames.has(src));
+      if (button.getAttribute('aria-pressed') !== value) button.setAttribute('aria-pressed', value);
+    }
+    syncStripActions();
+  }
+
+  function resetFrameStrip() {
+    closeFrameMenu();
+    endStripDrag();
+    suppressStripClick = false;
+    if (thumbRaf) cancelAnimationFrame(thumbRaf);
+    thumbRaf = 0;
+    thumbObserver.disconnect();
+    cards.clear();
+    visibleCards.clear();
+    selectedFrames.clear();
+    hiddenFrames.clear();
+    deletedFrames.clear();
+    currentCard = null;
+    selectionAnchor = null;
+    thumbSource.width = thumbSource.height = 1;
+    strip.replaceChildren();
+    strip.scrollLeft = 0;
+    framePanel.hidden = !parsed;
+    if (!parsed) return;
+    const fragment = document.createDocumentFragment();
+    for (let source = 0; source < parsed.frames.length; source++) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'gv-frame';
+      button.dataset.source = String(source);
+      button.innerHTML = '<span class="gv-frame-image" aria-hidden="true">' +
+        '<span class="gv-frame-pixels"></span><span class="gv-frame-hidden" hidden></span></span>' +
+        '<span class="gv-frame-caption"><span></span><span></span></span>' +
+        '<span class="gv-frame-state"></span>';
+      const [preview, caption, state] = button.children;
+      const [image, hiddenBadge] = preview.children;
+      const [number, delay] = caption.children;
+      number.textContent = String(source + 1);
+      cards.set(source, { source, button, image, hiddenBadge, delay, state });
+      fragment.append(button);
+    }
+    strip.append(fragment);
+    for (const { button } of cards.values()) thumbObserver.observe(button);
+  }
+
+  function editSelectedFrames(action) {
+    if (!parsed || exporting || !selectedFrames.size) return;
+    let changed = 0;
+    rebuildEditedTimeline(() => {
+      for (const src of selectedFrames) {
+        if (action === 'hide') {
+          if (hiddenFrames.has(src)) continue;
+          hiddenFrames.add(src);
+        } else if (action === 'restore') {
+          if (!hiddenFrames.delete(src)) continue;
+        } else {
+          hiddenFrames.delete(src);
+          deletedFrames.add(src);
+          const card = cards.get(src);
+          thumbObserver.unobserve(card.button);
+          visibleCards.delete(card);
+          cards.delete(src);
+          card.button.remove();
+        }
+        changed++;
+      }
+      if (action === 'delete') {
+        selectedFrames.clear();
+        selectionAnchor = null;
+      }
+    });
+    const verb = { hide: '隐藏', restore: '恢复', delete: '删除' }[action];
+    setStatus(`已${verb} ${changed} 帧`);
+  }
+
+  function endStripDrag() {
+    stripDrag = null;
+    strip.classList.remove('dragging');
+  }
+
+  strip.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    suppressStripClick = false;
+    const contentBottom = strip.getBoundingClientRect().top + strip.clientTop + strip.clientHeight;
+    if (e.clientY >= contentBottom || strip.scrollWidth <= strip.clientWidth) return;
+    stripDrag = { id: e.pointerId, x: e.clientX, scrollLeft: strip.scrollLeft };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (stripDrag?.id !== e.pointerId) return;
+    if (!(e.buttons & 1)) {
+      endStripDrag();
+      return;
+    }
+    const dx = e.clientX - stripDrag.x;
+    if (!suppressStripClick) {
+      if (Math.abs(dx) < 5) return;
+      strip.setPointerCapture(e.pointerId);
+      strip.classList.add('dragging');
+      suppressStripClick = true;
+    }
+    e.preventDefault();
+    strip.scrollLeft = stripDrag.scrollLeft - dx;
+  }, { passive: false });
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    window.addEventListener(event, (e) => {
+      if (stripDrag?.id === e.pointerId) endStripDrag();
+    });
+  }
+  window.addEventListener('blur', () => {
+    endStripDrag();
+    closeFrameMenu();
+  });
+
+  function selectOnlyFrame(src) {
+    selectedFrames.clear();
+    selectedFrames.add(src);
+    selectionAnchor = src;
+  }
+
+  function previewSelectedFrame(src) {
+    setPlaying(false);
+    const index = logicalBySource.get(src);
+    if (index !== undefined) showFrame(index, true);
+    syncStripSelection();
+  }
+
+  strip.addEventListener('click', (e) => {
+    if (suppressStripClick && e.detail > 0) {
+      suppressStripClick = false;
+      return;
+    }
+    const button = e.target.closest('.gv-frame');
+    if (!button || exporting) return;
+    const src = Number(button.dataset.source);
+    const additive = e.ctrlKey || e.metaKey;
+    if (e.shiftKey && selectionAnchor !== null) {
+      if (!additive) selectedFrames.clear();
+      const lo = Math.min(src, selectionAnchor);
+      const hi = Math.max(src, selectionAnchor);
+      for (const index of cards.keys()) {
+        if (index >= lo && index <= hi) selectedFrames.add(index);
+      }
+    } else if (additive) {
+      if (selectedFrames.has(src)) selectedFrames.delete(src);
+      else selectedFrames.add(src);
+      selectionAnchor = src;
+    } else selectOnlyFrame(src);
+    previewSelectedFrame(src);
+  });
+
+  strip.addEventListener('keydown', (e) => {
+    if (exporting || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return;
+    e.preventDefault();
+    for (const src of cards.keys()) selectedFrames.add(src);
+    syncStripSelection();
+  });
+
+  function closeFrameMenu(restoreFocus = false) {
+    if (frameMenu.hidden) return;
+    frameMenu.hidden = true;
+    if (restoreFocus) menuAnchor?.focus({ preventScroll: true });
+    menuAnchor = null;
+  }
+
+  strip.addEventListener('contextmenu', (e) => {
+    const button = e.target.closest('.gv-frame');
+    if (!button || exporting) return;
+    e.preventDefault();
+    const src = Number(button.dataset.source);
+    if (!selectedFrames.has(src)) selectOnlyFrame(src);
+    previewSelectedFrame(src);
+    menuAnchor = button;
+    for (const item of frameMenu.querySelectorAll('[data-command]')) {
+      item.hidden = $(item.dataset.command).disabled;
+    }
+    frameMenu.hidden = false;
+    const anchor = button.getBoundingClientRect();
+    const x = e.clientX || anchor.left;
+    const y = e.clientY || anchor.bottom;
+    frameMenu.style.left = `${Math.max(4, Math.min(x, innerWidth - frameMenu.offsetWidth - 4))}px`;
+    frameMenu.style.top = `${Math.max(4, Math.min(y, innerHeight - frameMenu.offsetHeight - 4))}px`;
+    frameMenu.querySelector('[data-command]:not([hidden])')?.focus({ preventScroll: true });
+  });
+
+  function runFrameCommand(item) {
+    closeFrameMenu(true);
+    $(item.dataset.command).click();
+  }
+
+  frameMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-command]');
+    if (item) runFrameCommand(item);
+  });
+  frameMenu.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Tab') {
+      if (e.key === 'Escape') e.preventDefault();
+      closeFrameMenu(true);
+      return;
+    }
+    const items = [...frameMenu.querySelectorAll('[data-command]:not([hidden])')];
+    const current = items.indexOf(document.activeElement);
+    if (e.key === 'Enter' && current >= 0) {
+      e.preventDefault();
+      runFrameCommand(items[current]);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = (current + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+      items[next]?.focus({ preventScroll: true });
+    }
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!frameMenu.contains(e.target)) closeFrameMenu();
+  });
+  strip.addEventListener('scroll', () => closeFrameMenu());
+  window.addEventListener('resize', () => closeFrameMenu());
+
+  const page = framePanel.closest('.page');
+  document.addEventListener('keydown', (e) => {
+    if (page.classList.contains('hidden') || !frameMenu.hidden || !keep.length || exporting) return;
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey ||
+      e.target.closest?.('input, select, textarea, [contenteditable]')) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    stepFrame(e.key === 'ArrowLeft' ? -1 : 1);
+    selectOnlyFrame(srcFrame(frameIndex));
+    syncStripSelection();
+    if (strip.contains(e.target)) currentCard?.focus({ preventScroll: true });
+    currentCard?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
+
+  hideFramesBtn.addEventListener('click', () => editSelectedFrames('hide'));
+  restoreFramesBtn.addEventListener('click', () => editSelectedFrames('restore'));
+  deleteFramesBtn.addEventListener('click', () => editSelectedFrames('delete'));
 
   // ---------- 导出 ----------
 
   // 缩放后的那一帧像素（先按裁剪框裁，再等比缩）；没裁剪且 100% 时直接给原缓冲，省一次画布往返。
   // 中间画布单独一张：paint 是预览正在显示的那张，导出时改它的尺寸会把画面拉花
-  function scaledFrame(rgba, sw, sh) {
-    const c = cropRect();
+  function scaledFrame(rgba, sw, sh, c) {
     const full = c.x === 0 && c.y === 0 && c.w === parsed.width && c.h === parsed.height;
     if (full && sw === parsed.width && sh === parsed.height) return rgba;
     // 负偏移 + 脏矩形：把源帧里那一块原样搬到画布左上角，省掉逐像素拷贝
@@ -524,18 +905,16 @@ export function initGifView({ view }) {
   const yieldFrame = () => new Promise((r) => setTimeout(r, 0));
 
   async function exportTo() {
-    if (!parsed) {
-      setStatus('还没有载入 GIF', true);
-      return;
-    }
+    if (!play || exporting) return;
+    if (frDrag) frUp();
     const my = ++exportId;
-    const keepRun = runId;
-    const [sw, sh] = outSize();
+    const crop = cropRect();
+    const [sw, sh] = outSize(crop);
     const count = selFrames();
     const delays = play.ms.map((ms) => Math.max(2, Math.round(ms / 10)));
     setPlaying(false);
-    exportBtn.disabled = true;
     exporting = true;
+    setEnabled();
     clearCache();
     try {
       // 第一遍：从头合成，扫一遍有没有透明像素，顺手取几帧当全局调色板的样本。
@@ -550,13 +929,13 @@ export function initGifView({ view }) {
         if (k % step === 0) {
           // 样本要活到第二遍编码之后，而帧缓冲环会覆写槽位，所以等比缩放时
           // scaledFrame 直接回的那个缓冲必须拷一份留下
-          const data = scaledFrame(rgba, sw, sh);
+          const data = scaledFrame(rgba, sw, sh, crop);
           samples.push({ width: sw, height: sh, data: data === rgba ? Uint8ClampedArray.from(data) : data });
         }
         if (k % 16 === 15) {
           setStatus(`正在取色 ${k + 1}/${count} 帧…`);
           await yieldFrame();
-          if (my !== exportId || keepRun !== runId) return;
+          if (my !== exportId) return;
         }
       }
       const p = gifParams(samples, { delay: delays[0], loop: parsed.loop, colors: 256, quality: 'normal', transparent });
@@ -568,16 +947,17 @@ export function initGifView({ view }) {
       setStatus('正在编码…');
       for (let k = 0; k < count; k++) {
         const rgba = frameOf(cutA + k);
-        parts.push(gifFrameBytes(p, { width: sw, height: sh, data: scaledFrame(rgba, sw, sh) }, k, table));
+        parts.push(gifFrameBytes(p, { width: sw, height: sh, data: scaledFrame(rgba, sw, sh, crop) }, k, table));
         if (k % 16 === 15) {
           setStatus(`正在编码 ${k + 1}/${count} 帧…`);
           await yieldFrame();
-          if (my !== exportId || keepRun !== runId) return;
+          if (my !== exportId) return;
         }
       }
       const bytes = gifConcat([...parts, gifTrailer()]);
       setStatus('正在保存…');
       const dir = await resolveSaveDir(saveOrigChk.checked && sourcePath ? dirname(sourcePath) : null);
+      if (my !== exportId) return;
       if (isTauri && !dir) {
         setStatus('已取消');
         return;
@@ -589,7 +969,9 @@ export function initGifView({ view }) {
       const fname = wanted
         ? await uniqueFilename(dir, wanted)
         : await seqFilename(dir, stemOf(name) || 'animation', '.gif');
+      if (my !== exportId) return;
       const saved = await saveBlob(fname, bytes, dir);
+      if (my !== exportId) return;
       if (saved === null) setStatus('已取消');
       else {
         setStatus(`已导出：${saved}（${humanSize(bytes.length)}）${wanted && fname !== wanted ? '·原名已占用' : ''}`);
@@ -598,62 +980,66 @@ export function initGifView({ view }) {
     } catch (ex) {
       if (my === exportId) setStatus('导出失败：' + (ex?.message ?? ex), true);
     } finally {
-      clearCache();
-      exporting = false;
-      exportBtn.disabled = !parsed;
-      if (my === exportId && parsed) {
+      if (my === exportId) {
+        clearCache();
+        exporting = false;
         comp.reset();
-        showFrame(frameIndex);
+        setEnabled();
+        showFrame(frameIndex, true);
+        scheduleThumbnails();
       }
     }
   }
 
-  // 导出停住的这一帧：无损 PNG，尺寸跟着「等比缩放」。
-  // 文件名固定 原名_f帧号，帧号取源文件里的编号 —— 抽过帧之后逻辑帧号会重排，
-  // 用它命名会对不上原文件
-  async function exportFrame() {
-    if (!parsed) {
-      setStatus('还没有载入 GIF', true);
-      return;
-    }
-    if (exporting) {
-      setStatus('GIF 正在导出，先等它结束', true);
-      return;
-    }
-    const keepRun = runId;
-    exportFrameBtn.disabled = true;
+  // PNG 保存按源帧编号命名，隐藏的帧仍可单独保存。裁剪与缩放共用 GIF 的导出设置。
+  async function exportFrames(sources) {
+    if (!parsed || exporting || !sources.length) return;
+    const my = ++exportId;
+    setPlaying(false);
+    exporting = true;
+    setEnabled();
+    let written = 0;
     try {
-      const rgba = frameOf(frameIndex);
-      if (!rgba) return;
-      const [sw, sh] = outSize();
-      const data = scaledFrame(rgba, sw, sh);
-      if (shrunk.width !== sw || shrunk.height !== sh) {
-        shrunk.width = sw;
-        shrunk.height = sh;
-      }
-      sctx.putImageData(new ImageData(data, sw, sh), 0, 0);
-      const blob = await new Promise((r) => shrunk.toBlob(r, 'image/png'));
-      if (!blob) throw new Error('PNG 编码失败');
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      if (keepRun !== runId) return;
+      const crop = cropRect();
+      const [sw, sh] = outSize(crop);
       setStatus('正在保存…');
       const dir = await resolveSaveDir(saveOrigChk.checked && sourcePath ? dirname(sourcePath) : null);
+      if (my !== exportId) return;
       if (isTauri && !dir) {
         setStatus('已取消');
         return;
       }
-      const wanted = `${stemOf(name) || 'animation'}_f${srcFrame(frameIndex) + 1}.png`;
-      const fname = await uniqueFilename(dir, wanted);
-      const saved = await saveBlob(fname, bytes, dir);
-      if (saved === null) setStatus('已取消');
-      else {
-        setStatus(`已导出：${saved}（${humanSize(bytes.length)}）${fname === wanted ? '' : '·原名已占用'}`);
+      const stem = stemOf(name) || 'animation';
+      let saved = null;
+      for (const src of sources) {
+        const data = scaledFrame(frameBySource(src), sw, sh, crop);
+        if (shrunk.width !== sw) shrunk.width = sw;
+        if (shrunk.height !== sh) shrunk.height = sh;
+        sctx.putImageData(new ImageData(data, sw, sh), 0, 0);
+        const blob = await new Promise((r) => shrunk.toBlob(r, 'image/png'));
+        if (my !== exportId) return;
+        if (!blob) throw new Error('PNG 编码失败');
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (my !== exportId) return;
+        const fname = await uniqueFilename(dir, `${stem}_f${src + 1}.png`);
+        if (my !== exportId) return;
+        saved = await saveBlob(fname, bytes, dir);
+        if (my !== exportId) return;
+        written++;
         io.setExport(saved);
+        if (sources.length > 1) setStatus(`正在保存 ${written}/${sources.length} 帧…`);
       }
+      setStatus(sources.length === 1 ? `已导出：${saved}` : `已保存 ${written} 帧 PNG`);
     } catch (ex) {
-      setStatus('导出当前帧失败：' + (ex?.message ?? ex), true);
+      if (my === exportId) {
+        setStatus(`${written ? `已保存 ${written} 帧 · ` : ''}导出帧失败：${ex?.message ?? ex}`, true);
+      }
     } finally {
-      exportFrameBtn.disabled = !parsed;
+      if (my === exportId) {
+        exporting = false;
+        setEnabled();
+        scheduleThumbnails();
+      }
     }
   }
 
@@ -666,6 +1052,7 @@ export function initGifView({ view }) {
     }
     const my = ++runId;
     exportId++;
+    exporting = false;
     setPlaying(false);
     setStatus('正在读取…');
     try {
@@ -682,8 +1069,10 @@ export function initGifView({ view }) {
       const ms = performance.now() - t0;
       parsed = p;
       comp = createGifCompositor(p);
-      srcClock = gifTimeline(p);
+      sourceMs = gifDelaysMs(p);
+      frDrag = null;
       clearCache();
+      resetFrameStrip();
       name = entry.name;
       sourcePath = entry.path || null;
       fileSize = bytes.length;
@@ -694,6 +1083,7 @@ export function initGifView({ view }) {
       frameIndex = 0;
       cutA = 0;
       cutB = keep.length - 1;
+      sourceRange = null;
       speed = 1;
       speedRange.value = '1';
       speedLabel.textContent = '1.0×';
@@ -701,11 +1091,12 @@ export function initGifView({ view }) {
       view.setSelect(null);
       syncCropMode();
       rebuildPlay();
-      setEnabled(true);
+      setEnabled();
       syncFrUI();
       updateInfo();
       updateOutInfo();
       showFrame(0);
+      syncFrameCards();
       io.setSource(entry.path);
       io.setExport(null);
       setStatus(`已解码 ${p.frames.length} 帧，用时 ${ms < 10 ? ms.toFixed(1) : Math.round(ms)}ms`);
@@ -719,13 +1110,17 @@ export function initGifView({ view }) {
   function clearImage() {
     runId++; // 正在读的那一次别再落地了
     exportId++;
+    exporting = false;
     setPlaying(false);
     parsed = null;
     comp = null;
-    srcClock = null;
+    sourceMs = [];
     play = null;
     keep = [];
     spanMs = [];
+    logicalBySource.clear();
+    frDrag = null;
+    resetFrameStrip();
     clearCache();
     name = '';
     sourcePath = null;
@@ -733,13 +1128,14 @@ export function initGifView({ view }) {
     frameIndex = 0;
     cutA = 0;
     cutB = 0;
+    sourceRange = null;
     cropOn = false;
     view.setSelect(null);
     syncCropMode();
     playStart = 0;
     io.clear();
     view.setImage(null);
-    setEnabled(false);
+    setEnabled();
     updateInfo();
     updatePos();
     timeLabel.textContent = '00:00.00 / 00:00.00';
@@ -762,7 +1158,7 @@ export function initGifView({ view }) {
   });
   playBtn.addEventListener('click', () => setPlaying(!playing));
   resetBtn.addEventListener('click', () => {
-    if (!parsed) return;
+    if (!keep.length) return;
     showFrame(cutA);
     // 在播就从区间起点重新起算，不是回到原来的进度
     if (playing) playStart = performance.now();
@@ -813,7 +1209,8 @@ export function initGifView({ view }) {
     speedLabel.textContent = `${speed.toFixed(1)}×`;
     rebuildPlay();
     updateOutInfo();
-    showFrame(frameIndex);
+    showFrame(frameIndex, true);
+    syncFrameCards();
     if (playing) playStart = performance.now() - play.cum[frameIndex - cutA];
   });
   const clampedIn = (el) => {
@@ -838,9 +1235,12 @@ export function initGifView({ view }) {
   dropSel.addEventListener('change', () => applyDrop(Number(dropSel.value) || 0));
   scaleSel.addEventListener('change', () => updateOutInfo());
   exportBtn.addEventListener('click', exportTo);
-  exportFrameBtn.addEventListener('click', exportFrame);
+  exportFrameBtn.addEventListener('click', () => {
+    if (keep.length) exportFrames([srcFrame(frameIndex)]);
+  });
+  saveFramesBtn.addEventListener('click', () => exportFrames([...selectedFrames].sort((a, b) => a - b)));
 
-  setEnabled(false);
+  setEnabled();
   syncCropMode(); // 框选默认关着：左键先是平移，进了裁剪模式才接管
   updateInfo();
   updatePos();

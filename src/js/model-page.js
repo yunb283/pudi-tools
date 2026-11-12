@@ -56,6 +56,7 @@ export function initModelPage() {
   const status = $('mv-status');
   const hint = $('mv-hint');
   const rendererChoice = $('mv-renderer');
+  const clearBtn = $('mv-clear');
   const webglCanvas = $('mv-canvas');
   const webglBar = $('mv-webgl-bar');
   const webglInfo = $('mv-webgl-info');
@@ -73,14 +74,15 @@ export function initModelPage() {
   }
 
   async function saveImage(filename, makeBytes) {
+    const from = current;
     try {
       const bytes = await makeBytes();
       const dir = await resolveSaveDir(null);
       if (isTauri && !dir) return;
       const saved = await saveBlob(filename, bytes, dir);
-      if (saved) setStatus('已导出：' + saved);
+      if (saved && current === from) setStatus('已导出：' + saved);
     } catch (err) {
-      setStatus('导出失败：' + (err.message || err), true);
+      if (current === from) setStatus('导出失败：' + (err.message || err), true);
     }
   }
 
@@ -118,6 +120,7 @@ export function initModelPage() {
     drawUvExport = uv.drawUvExport;
     fast = view.createModelView({
       canvas: $('mv-fast-canvas'), stage, isVisible, info: $('mv-fast-info'), viewSelect: $('mv-fast-view'),
+      viewportTools: $('mv-viewport-tools'),
       bar: $('mv-fast-bar'), uvBar: $('mv-uv-bar'), animBar: $('mv-anim-bar'),
       buttons: {
         solid: $('mv-solid'), wire: $('mv-fast-wire'), both: $('mv-both'),
@@ -193,8 +196,8 @@ export function initModelPage() {
         if (preference === 'auto') status.append(' · 已切换至 WebGL');
       }
       current = { entry, siblings, preference };
-      $('mv-file').textContent = entry.name;
       hint.hidden = true;
+      clearBtn.disabled = false;
       return true;
     } catch (err) {
       setStatus('载入失败：' + (err.message || err), true);
@@ -225,10 +228,15 @@ export function initModelPage() {
 
   rendererChoice.addEventListener('change', () => {
     if (!current) return;
+    const next = rendererChoice.value;
     rendererChoice.disabled = true;
     queue = queue.then(async () => {
+      if (!current) {
+        rendererChoice.disabled = false;
+        return;
+      }
       const { entry, siblings, preference } = current;
-      if (!await openModel(entry, siblings, rendererChoice.value)) rendererChoice.value = preference;
+      if (!await openModel(entry, siblings, next)) rendererChoice.value = preference;
     });
   });
   $('mv-open').addEventListener('click', async () => {
@@ -243,6 +251,20 @@ export function initModelPage() {
       setStatus('打开失败：' + (err.message || err), true);
     }
   });
+  clearBtn.addEventListener('click', () => {
+    clearBtn.disabled = true;
+    queue = queue.then(() => {
+      if (mode === 'fast') fast.dispose();
+      if (mode === 'webgl') showWebgl(false);
+      current = null;
+      mode = null;
+      exportData = null;
+      if (uvExport.open) uvExport.close();
+      clearBtn.disabled = true;
+      hint.hidden = false;
+      setStatus('已清除模型');
+    });
+  });
   $('mv-reset').addEventListener('click', () => {
     if (mode === 'fast') fast.reset();
     if (mode === 'webgl') webgl.reset();
@@ -256,7 +278,7 @@ export function initModelPage() {
       return new Uint8Array(await blob.arrayBuffer());
     });
   });
-  $('mv-help-formats').textContent = MODEL_EXTS.map((ext) => '.' + ext).join('、');
+  $('mv-help-formats').textContent = MODEL_EXTS.map((ext) => '.' + ext).join('、 ');
   $('mv-help-open').addEventListener('click', () => help.showModal());
   page.addEventListener('keydown', (e) => {
     if (mode !== 'fast' || e.target.closest('input, select, textarea, button, dialog, [contenteditable]')) return;

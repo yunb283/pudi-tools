@@ -37,7 +37,6 @@ const CHANNELS = [
 ];
 
 const BACKGROUNDS = {
-  dark: 0x1b1d22,
   light: 0xeef0f4,
   blue: 0x2a3648,
 };
@@ -71,6 +70,7 @@ const state = {
 };
 
 let renderer, scene, camera, controls, manager, grid, axes, bounds, page, stage, canvas;
+let loading = false;
 let raf = 0;
 let needsRender = true;
 let lastTime = performance.now();
@@ -159,6 +159,7 @@ function initRenderer() {
   manager.addHandler(/\.hdr$/i, new RGBELoader());
   manager.addHandler(/\.exr$/i, new EXRLoader());
   manager.onError = (url) => {
+    if (canvas.hidden && !loading) return;
     const name = baseName(String(url).split('?')[0]).toLowerCase();
     if (/\.(png|jpe?g|tga|dds|bmp|gif|webp|tiff?|hdr|exr|ktx2?|basis|avif)$/i.test(name)) {
       state.missingAssets.add(name);
@@ -217,11 +218,12 @@ function requestRender() {
 function applyBackground(mode) {
   state.bg = mode;
   if (!renderer) return;
-  stage.classList.toggle('mv-checker', mode === 'checker');
+  stage.classList.toggle('mv-checker', mode === 'checker' && !canvas.hidden);
   if (mode === 'checker') {
     renderer.setClearColor(0x000000, 0);
   } else {
-    renderer.setClearColor(BACKGROUNDS[mode] ?? BACKGROUNDS.dark, 1);
+    const color = BACKGROUNDS[mode] ?? getComputedStyle(stage).getPropertyValue('--mv-preview-bg').trim();
+    renderer.setClearColor(color, 1);
   }
   gridOpacity();
   requestRender();
@@ -784,6 +786,7 @@ function renderInfo() {
   }
   const fmt = (n) => Number(n || 0).toLocaleString('zh-CN');
   const rows = [
+    ['文件', state.name],
     ['网格', fmt(s.meshes)],
     ['三角面', fmt(s.triangles)],
     ['顶点', fmt(s.vertices)],
@@ -872,6 +875,7 @@ function fitModel(pivot) {
 
 async function loadEntry(entry, siblings, bytes) {
   const ext = extOf(entry.name);
+  loading = true;
   setStatus('正在读取 ' + entry.name + ' …');
   // 贴图是异步加载的：统计本次解析发起的资源请求，等全部结束（含 404）再修材质
   const rawStart = manager.itemStart;
@@ -924,6 +928,7 @@ async function loadEntry(entry, siblings, bytes) {
       state.animPlaying = false;
     }
     $('mv-anim').disabled = !state.animations.length;
+    $('mv-webgl-anim-bar').hidden = !state.animations.length;
     $('mv-anim').classList.toggle('on', state.animPlaying);
     $('mv-anim').textContent = state.animPlaying ? '暂停动画' : '播放动画';
     state.name = entry.name;
@@ -947,6 +952,7 @@ async function loadEntry(entry, siblings, bytes) {
     setStatus('载入失败：' + (err?.message || String(err)), true);
     return false;
   } finally {
+    loading = false;
     manager.itemStart = rawStart;
     manager.itemEnd = rawEnd;
     manager.onLoad = rawLoad;
@@ -1044,6 +1050,7 @@ export function initModelWebgl() {
       disposeRoot();
       clearAssets();
       renderInfo();
+      $('mv-webgl-anim-bar').hidden = true;
       stage.classList.remove('mv-checker');
     },
   };

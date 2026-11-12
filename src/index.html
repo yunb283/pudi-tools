@@ -1036,7 +1036,7 @@
     </div>
 
     <div class="page hidden" id="page-gifview">
-      <div class="panel" style="flex: 58">
+      <div class="panel">
         <div class="panel-head">
           <span class="panel-title">GIF 动画预览</span>
           <div class="bg-btns" id="gv-prev-bg"></div>
@@ -1110,7 +1110,7 @@
           >
         </div>
       </div>
-      <div class="panel" style="flex: 42">
+      <div class="panel">
         <div class="panel-head">
           <span class="panel-title">导入与导出</span>
         </div>
@@ -1135,7 +1135,7 @@
           <select
             id="gv-drop"
             disabled
-            title="0 不抽帧;1 从第一帧起每 2 帧留 1 帧;2 再走一遍,每 4 帧留 1 帧.抽掉的帧把时长并进后一帧,一圈总时长不变"
+            title="0 不抽帧，1 每 2 帧留 1 帧，2 每 4 帧留 1 帧。抽掉的时长并入前一个保留帧。"
           >
             <option value="0" selected>0(不抽帧)</option>
             <option value="1">1(每 2 帧留 1)</option>
@@ -1174,6 +1174,24 @@
         <div class="io-row end" id="gv-io"></div>
         <div class="status" id="gv-status"></div>
       </div>
+      <section class="panel gv-frames" id="gv-frames" aria-label="GIF 帧缩略图" hidden>
+        <div class="panel-head gv-frames-head">
+          <span class="panel-title" title="左键拖动滚动，右键打开帧操作，左右方向键切帧">帧缩略图</span>
+          <span class="dim-label" id="gv-frames-count" aria-live="polite"></span>
+          <button class="btn small" id="gv-frames-hide" type="button" disabled>隐藏选中</button>
+          <button class="btn small" id="gv-frames-restore" type="button" disabled>恢复选中</button>
+          <button class="btn small" id="gv-frames-delete" type="button" title="从当前编辑中删除选中的帧" disabled>删除选中</button>
+          <button class="btn small" id="gv-frames-save" type="button" title="将选中的帧保存为 PNG" disabled>保存选中</button>
+        </div>
+        <div class="gv-strip" id="gv-strip" role="group" aria-label="GIF 帧，左右方向键切帧，Ctrl 多选，Shift 连选"></div>
+        <div class="gv-frame-menu" id="gv-frame-menu" role="menu" aria-label="帧操作" hidden>
+          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-hide">隐藏</button>
+          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-restore">恢复显示</button>
+          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-delete">删除</button>
+          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-save">保存为 PNG</button>
+        </div>
+        <div class="dim-label" id="gv-frames-empty" hidden>所有帧均已删除。重新打开 GIF 可重新编辑。</div>
+      </section>
     </div>
 
     <div class="page hidden" id="page-video">
@@ -2509,17 +2527,23 @@
     <!-- 模型预览 -->
     <div class="page hidden" id="page-model">
       <div class="panel mv-main">
-        <div class="panel-head">
-          <span class="panel-title">模型预览</span>
-          <span class="dim-label mv-file" id="mv-file">未载入模型</span>
-          <span style="flex: 1"></span>
+        <div class="panel-head mv-head" role="group" aria-label="模型文件与 UV 工具">
           <select id="mv-renderer" aria-label="预览模式" title="选择预览模式">
             <option value="auto">流畅优先</option>
             <option value="webgl">WebGL 材质检查</option>
           </select>
           <button class="btn small" id="mv-open" type="button">打开模型…</button>
+          <button class="btn small" id="mv-clear" type="button" disabled>清除模型</button>
           <button class="btn small" id="mv-reset" type="button">重置视角</button>
           <button class="btn small" id="mv-shot" type="button">导出截图</button>
+          <div class="mv-head-uv" role="group" aria-label="UV 与贴图" id="mv-uv-bar" hidden>
+            <button class="btn small" id="mv-uv-wire" type="button">显示 UV</button>
+            <button class="btn small" id="mv-uv-view" type="button">UV 视图</button>
+            <select id="mv-uv-set" aria-label="UV 通道"></select>
+            <button class="btn small" id="mv-texture" type="button">导入贴图…</button>
+            <button class="btn small" id="mv-texture-clear" type="button" disabled>清除贴图</button>
+            <button class="btn small" id="mv-texture-alpha" type="button" disabled>半透明</button>
+          </div>
         </div>
         <div class="canvas-wrap mv-stage" id="mv-stage">
           <canvas id="mv-canvas" hidden></canvas>
@@ -2539,72 +2563,70 @@
             <canvas id="mv-uv-canvas" width="260" height="260"></canvas>
             <div class="mv-uv-info" id="mv-uv-info"></div>
             <button class="btn small mv-uv-export" id="mv-uv-export" type="button">导出 UV…</button>
-            <div class="mv-uv-grip" id="mv-uv-grip" title="向左或向下拖动调整 UV 视图大小"></div>
+            <div class="mv-uv-grip" id="mv-uv-grip" title="拖动等比缩放 UV 视图，双击恢复默认"></div>
           </section>
+          <div class="mv-viewport-tools" id="mv-viewport-tools">
+            <div class="mv-floating-bar mv-animation-bar" id="mv-anim-bar" role="group" aria-label="动画控制" hidden>
+              <select id="mv-take" aria-label="动画片段" hidden></select>
+              <span class="mv-tool-divider" aria-hidden="true"></span>
+              <button class="btn small" id="mv-first" type="button">首帧</button>
+              <button class="btn small" id="mv-prev" type="button">上一帧</button>
+              <button class="btn small" id="mv-play" type="button">播放</button>
+              <button class="btn small" id="mv-next" type="button">下一帧</button>
+              <span class="mv-tool-divider" aria-hidden="true"></span>
+              <input id="mv-timeline" type="range" min="0" max="1" step="1" value="0" aria-label="动画时间轴">
+              <span class="dim-label" id="mv-time"></span>
+              <button class="btn small" id="mv-unit" type="button" aria-label="切换帧 / 秒显示">帧</button>
+            </div>
+            <div class="mv-floating-bar" id="mv-fast-bar" role="group" aria-label="模型显示" hidden>
+              <select id="mv-fast-view" aria-label="标准视角">
+                <option value="iso">立体</option><option value="front">前</option><option value="back">后</option>
+                <option value="left">左</option><option value="right">右</option><option value="top">顶</option>
+              </select>
+              <button class="btn small" id="mv-solid" type="button">实体</button>
+              <button class="btn small" id="mv-fast-wire" type="button">线框</button>
+              <button class="btn small" id="mv-both" type="button">叠加</button>
+              <span class="mv-tool-divider" aria-hidden="true"></span>
+              <button class="btn small" id="mv-projection" type="button" title="切换透视 / 正交视图">透视视图</button>
+              <button class="btn small" id="mv-fast-grid" type="button">网格</button>
+              <button class="btn small" id="mv-origin" type="button">原点</button>
+              <button class="btn small" id="mv-fast-rotate" type="button">自动旋转</button>
+              <span class="mv-tool-divider" aria-hidden="true"></span>
+              <button class="btn small" id="mv-flat" type="button">平面着色</button>
+              <button class="btn small" id="mv-smooth" type="button">模型光滑组</button>
+              <button class="btn small" id="mv-vertices" type="button">顶点编号</button>
+              <button class="btn small" id="mv-normals" type="button">顶点法线</button>
+            </div>
+            <div class="mv-floating-bar mv-animation-bar" id="mv-webgl-anim-bar" role="group" aria-label="动画控制" hidden>
+              <select id="mv-clip" title="选择动画" aria-label="选择动画" disabled></select>
+              <button class="btn small" id="mv-anim" type="button" disabled>播放动画</button>
+            </div>
+            <div class="mv-floating-bar mv-webgl-bar" id="mv-webgl-bar" role="group" aria-label="材质检查" hidden>
+              <label class="dim-label">检查通道</label>
+              <select id="mv-channel" title="切换材质检查视图"></select>
+              <label class="dim-label">背景</label>
+              <select id="mv-bg" title="视口背景">
+                <option value="dark">深色</option>
+                <option value="light">浅色</option>
+                <option value="blue">蓝灰</option>
+                <option value="checker">棋盘格</option>
+              </select>
+              <label class="dim-label" for="mv-quality">画质</label>
+              <select id="mv-quality" title="降低渲染分辨率可改善大模型的交互性能">
+                <option value="performance">流畅</option><option value="balanced" selected>均衡</option><option value="high">高清</option>
+              </select>
+              <label class="dim-label" for="mv-view">视角</label>
+              <select id="mv-view" title="切换标准视角">
+                <option value="iso">立体</option><option value="front">前</option><option value="back">后</option><option value="left">左</option><option value="right">右</option><option value="top">顶</option>
+              </select>
+              <button class="btn small" id="mv-axes" type="button">坐标轴</button>
+              <button class="btn small" id="mv-bounds" type="button">包围盒</button>
+              <button class="btn small" id="mv-wire" type="button">线框</button>
+              <button class="btn small on" id="mv-grid" type="button">网格</button>
+              <button class="btn small" id="mv-rotate" type="button">自动旋转</button>
+            </div>
+          </div>
         </div>
-        <div class="ctrl-row wrap mv-toolbar" id="mv-fast-bar" hidden>
-          <select id="mv-fast-view" aria-label="标准视角">
-            <option value="iso">立体</option><option value="front">前</option><option value="back">后</option>
-            <option value="left">左</option><option value="right">右</option><option value="top">顶</option>
-          </select>
-          <button class="btn small" id="mv-solid" type="button">实体</button>
-          <button class="btn small" id="mv-fast-wire" type="button">线框</button>
-          <button class="btn small" id="mv-both" type="button">叠加</button>
-          <button class="btn small" id="mv-projection" type="button" title="切换透视 / 正交视图">透视视图</button>
-          <button class="btn small" id="mv-fast-grid" type="button">网格</button>
-          <button class="btn small" id="mv-origin" type="button">原点</button>
-          <button class="btn small" id="mv-fast-rotate" type="button">自动旋转</button>
-          <button class="btn small" id="mv-flat" type="button">平面着色</button>
-          <button class="btn small" id="mv-smooth" type="button">模型光滑组</button>
-          <button class="btn small" id="mv-vertices" type="button">顶点编号</button>
-          <button class="btn small" id="mv-normals" type="button">顶点法线</button>
-        </div>
-        <div class="ctrl-row wrap mv-toolbar" id="mv-uv-bar" hidden>
-          <button class="btn small" id="mv-uv-wire" type="button">显示 UV</button>
-          <button class="btn small" id="mv-uv-view" type="button">UV 视图</button>
-          <select id="mv-uv-set" aria-label="UV 通道"></select>
-          <button class="btn small" id="mv-texture" type="button">导入贴图…</button>
-          <button class="btn small" id="mv-texture-clear" type="button" disabled>清除贴图</button>
-          <button class="btn small" id="mv-texture-alpha" type="button" disabled>半透明</button>
-        </div>
-        <div class="ctrl-row wrap mv-toolbar" id="mv-anim-bar" hidden>
-          <select id="mv-take" aria-label="动画片段" hidden></select>
-          <button class="btn small" id="mv-first" type="button">首帧</button>
-          <button class="btn small" id="mv-prev" type="button">上一帧</button>
-          <button class="btn small" id="mv-play" type="button">播放</button>
-          <button class="btn small" id="mv-next" type="button">下一帧</button>
-          <input id="mv-timeline" type="range" min="0" max="1" step="1" value="0" aria-label="动画时间轴">
-          <span class="dim-label" id="mv-time"></span>
-          <button class="btn small" id="mv-unit" type="button" aria-label="切换帧 / 秒显示">帧</button>
-        </div>
-        <div class="ctrl-row wrap mv-toolbar" id="mv-webgl-bar" hidden>
-          <label class="dim-label">检查通道</label>
-          <select id="mv-channel" title="切换材质检查视图"></select>
-          <label class="dim-label">背景</label>
-          <select id="mv-bg" title="视口背景">
-            <option value="dark">深色</option>
-            <option value="light">浅色</option>
-            <option value="blue">蓝灰</option>
-            <option value="checker">棋盘格</option>
-          </select>
-          <label class="dim-label" for="mv-quality">画质</label>
-          <select id="mv-quality" title="降低渲染分辨率可改善大模型的交互性能">
-            <option value="performance">流畅</option><option value="balanced" selected>均衡</option><option value="high">高清</option>
-          </select>
-          <label class="dim-label" for="mv-view">视角</label>
-          <select id="mv-view" title="切换标准视角">
-            <option value="iso">立体</option><option value="front">前</option><option value="back">后</option><option value="left">左</option><option value="right">右</option><option value="top">顶</option>
-          </select>
-          <button class="btn small" id="mv-axes" type="button">坐标轴</button>
-          <button class="btn small" id="mv-bounds" type="button">包围盒</button>
-          <button class="btn small" id="mv-wire" type="button">线框</button>
-          <button class="btn small on" id="mv-grid" type="button">网格</button>
-          <button class="btn small" id="mv-rotate" type="button">自动旋转</button>
-          <select id="mv-clip" title="选择动画" aria-label="选择动画" disabled></select>
-          <button class="btn small" id="mv-anim" type="button" disabled>播放动画</button>
-        </div>
-        <div class="status" id="mv-uv-status" aria-live="polite"></div>
-        <div class="status" id="mv-status"></div>
       </div>
       <div class="panel mv-side">
         <div class="panel-head"><span class="panel-title">模型信息</span></div>
@@ -2623,21 +2645,29 @@
             </div>
           </div>
         </div>
-        <button class="btn small mv-help-button" id="mv-help-open" type="button" aria-haspopup="dialog" aria-controls="mv-help">说明</button>
+        <div class="mv-side-footer">
+          <div class="status" id="mv-uv-status" aria-live="polite"></div>
+          <div class="status" id="mv-status" aria-live="polite"></div>
+          <button class="btn small mv-help-button" id="mv-help-open" type="button" aria-haspopup="dialog" aria-controls="mv-help">说明</button>
+        </div>
       </div>
-      <dialog class="mv-help" id="mv-help" aria-labelledby="mv-help-title">
-        <h2 id="mv-help-title">模型预览说明</h2>
-        <h3>支持的格式</h3>
-        <p id="mv-help-formats"></p>
-        <h3>打开模型与外部资源</h3>
-        <p>可将模型拖入预览区，或点「打开模型…」。将 .bin 和 .mtl 放在模型同目录，或与模型一同拖入。使用「WebGL 材质检查」可查看原始贴图和 PBR 通道。贴图可放在模型同目录，或与模型一同拖入。</p>
-        <h3>流畅优先</h3>
-        <p>常见网格使用布丁看图的渲染方式。大模型在交互时降低分辨率，超过显示面数上限时抽样。其他格式或解析失败的模型会尝试用 WebGL 材质检查模式打开。</p>
-        <h3>视口操作</h3>
-        <p>左键拖动旋转，右键拖动平移，滚轮缩放。流畅预览支持拖入图片作为贴图。点「UV 视图」查看展开图，单击选择、Shift + 左键拖动框选、滚轮缩放。动画可用时间轴和逐帧按钮检查。</p>
-        <form method="dialog">
-          <button class="btn small" type="submit" autofocus>关闭</button>
-        </form>
+      <dialog class="mv-help mv-help-guide" id="mv-help" aria-labelledby="mv-help-title">
+        <header class="mv-help-header">
+          <h2 id="mv-help-title">模型预览说明</h2>
+        </header>
+        <div class="mv-help-content">
+          <h3>支持的格式</h3>
+          <p id="mv-help-formats"></p>
+          <h3>打开模型与外部资源</h3>
+          <p>可将模型拖入预览区，或点「打开模型…」。将 .bin 和 .mtl 放在模型同目录，或与模型一同拖入。使用「WebGL 材质检查」可查看原始贴图和 PBR 通道。贴图可放在模型同目录，或与模型一同拖入。</p>
+          <h3>流畅优先</h3>
+          <p>常见网格使用布丁看图的渲染方式。大模型在交互时降低分辨率，超过显示面数上限时抽样。其他格式或解析失败的模型会尝试用 WebGL 材质检查模式打开。</p>
+          <h3>视口操作</h3>
+          <p>左键拖动旋转，右键拖动平移，滚轮缩放。流畅预览支持拖入图片作为贴图。点「UV 视图」查看展开图，单击选择、Shift + 左键拖动框选、滚轮缩放。动画可用时间轴和逐帧按钮检查。</p>
+          <form method="dialog">
+            <button class="btn small" type="submit" autofocus>关闭</button>
+          </form>
+        </div>
       </dialog>
       <dialog class="mv-help" id="mv-uv-export-dialog" aria-labelledby="mv-uv-export-title">
         <h2 id="mv-uv-export-title">导出 UV</h2>
