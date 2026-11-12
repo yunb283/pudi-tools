@@ -3684,6 +3684,18 @@ html.fc-fullscreen .page {
   height: 100%;
 }
 
+#mv-renderer {
+  width: auto;
+}
+
+#mv-fast-canvas {
+  cursor: grab;
+}
+
+#mv-fast-canvas.dragging {
+  cursor: grabbing;
+}
+
 .mv-stage.mv-checker {
   background-color: rgba(160, 160, 160, 0.12);
   background-image:
@@ -3709,8 +3721,85 @@ html.fc-fullscreen .page {
   min-width: 108px;
 }
 
-#mv-status:empty {
+#mv-status:empty,
+#mv-uv-status:empty {
   display: none;
+}
+
+#mv-uv-status {
+  height: auto;
+}
+
+#mv-timeline {
+  flex: 1;
+  min-width: 120px;
+}
+
+.mv-uv-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 280px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px;
+  border: 1px solid var(--border-modal);
+  border-radius: 6px;
+  background: var(--bg-modal);
+}
+
+.mv-uv-elements .btn {
+  flex: 1;
+}
+
+#mv-uv-canvas {
+  flex: none;
+  width: 260px;
+  height: 260px;
+  max-width: 100%;
+  background: #171a20;
+  cursor: crosshair;
+}
+
+#mv-uv-canvas.uv-panning {
+  cursor: grabbing;
+}
+
+.mv-uv-info {
+  color: var(--muted-a6);
+  font-size: 12px;
+}
+
+.mv-uv-export {
+  margin-left: 18px;
+}
+
+.mv-uv-grip {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  width: 16px;
+  height: 16px;
+  border-bottom: 2px solid var(--muted-a6);
+  border-left: 2px solid var(--muted-a6);
+  cursor: nesw-resize;
+}
+
+.mv-help .mv-uv-export-form {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.mv-uv-export-actions {
+  grid-column: 1 / -1;
+  text-align: right;
 }
 
 .mv-help-button {
@@ -3761,6 +3850,18 @@ html.fc-fullscreen .page {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+#mv-webgl-info {
+  display: grid;
+  gap: 8px;
+}
+
+.mv-fast-stats {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  line-height: 1.65;
 }
 
 .mv-group {

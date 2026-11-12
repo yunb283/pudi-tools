@@ -34,7 +34,7 @@
 
 | 工具 | 说明 |
 | --- | --- |
-| **模型预览** | 本地 WebGL 视口，支持 GLB / glTF、OBJ + MTL、FBX、STL、PLY、DAE、3MF、3DS、VRML、VOX、AMF、PCD / XYZ、USD / USDA / USDC / USDZ、KMZ、LWO、MD2、GCode、VTK；9 个检查通道（PBR、Albedo、法线、粗糙度、金属度、自发光、不透明度、Unlit、线框）、材质与面数统计、动画片段选择与播放、标准视角、坐标轴和包围盒、画质调节、自动旋转、截图导出。分离式模型的贴图 / `.bin` / `.mtl` 会自动从同目录补齐 |
+| **模型预览** | 默认用布丁看图的流畅预览打开 GLB / glTF、OBJ + MTL、FBX、STL、PLY、DAE、3MF、3DS、AMF，支持实体 / 线框叠加、UV 展开与 PNG / TGA 导出、指定贴图、正交 / 透视视图和动画逐帧。WebGL 材质检查模式保留原始贴图、9 个检查通道和包围盒，并支持 VRML、VOX、PCD / XYZ、USD / USDA / USDC / USDZ、KMZ、LWO、MD2、GCode、VTK。两种模式都支持标准视角和截图 |
 
 > 基于随仓库 vendor 的 three.js 0.180.0（MIT），离线可用；`.blend` / `.max` / `.ma` / `.mb` 等内部格式请先导出 glTF。Albedo 项目专有的 NIF 读取器与自研 USDC 解码器不在其中。
 
@@ -123,7 +123,7 @@ build-portable.cmd    便携版打包脚本
 - 无前端框架：ES Modules + Canvas / WebGL / Web Worker；TGA、TIFF、DDS、EXR、HDR、PNM、GIF 等格式由 `src/js/` 下的自写解码器处理，HEIC / HEIF 交给 Rust 的 `zune-heic`。
 - `src/js/platform.js` 是前后端的唯一适配层：Tauri 下走 `invoke` 与 asset 协议，浏览器下走 File / Blob，保存同名冲突、序列帧自动补全等逻辑都收在这里。
 - Rust 侧提供文件读写、列表、目录创建、HEIC 解码、FFmpeg 转码、yt-dlp 下载与更新、系统信息与电源操作；大块二进制走原始字节 IPC，避免 base64 开销。
-- 「模型预览」用 importmap 把裸模块 `three` / `three/addons/` 映射到 `src/vendor/three/`，无打包器、完全离线；外部贴图通过 `LoadingManager.setURLModifier` 指向同目录资源生成的 blob URL，并只读取模型中实际引用到的文件名。
+- 「模型预览」从 `src/js/model-preview/` 按需加载布丁看图的网格解析和渲染器。流畅模式限制每帧显示面数，大网格交互时降低分辨率。原始贴图和 PBR 检查使用通过 importmap 映射到本地的 three.js。两种模式均离线运行。
 - 模型用外层 pivot 居中缩放（不改动 FBX 等格式自带的单位与旋转），地面网格按模型尺寸自适应；贴图缺失 / 加载失败时剔除空贴图并回退到材质本色，避免模型整只变黑；老式 Phong / Lambert 材质在金属度 / 粗糙度通道显示占位灰并在状态栏提示。
 - 页签显隐 / 排序、主题、置顶等偏好全部存在 `localStorage`，不写配置文件。
 

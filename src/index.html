@@ -2506,22 +2506,78 @@
       </div>
     </div>
 
-    <!-- 模型预览：three.js 本地视口 + 检查通道 + 材质统计 -->
+    <!-- 模型预览 -->
     <div class="page hidden" id="page-model">
       <div class="panel mv-main">
         <div class="panel-head">
           <span class="panel-title">模型预览</span>
           <span class="dim-label mv-file" id="mv-file">未载入模型</span>
           <span style="flex: 1"></span>
+          <select id="mv-renderer" aria-label="预览模式" title="选择预览模式">
+            <option value="auto">流畅优先</option>
+            <option value="webgl">WebGL 材质检查</option>
+          </select>
           <button class="btn small" id="mv-open" type="button">打开模型…</button>
           <button class="btn small" id="mv-reset" type="button">重置视角</button>
           <button class="btn small" id="mv-shot" type="button">导出截图</button>
         </div>
         <div class="canvas-wrap mv-stage" id="mv-stage">
-          <canvas id="mv-canvas"></canvas>
+          <canvas id="mv-canvas" hidden></canvas>
+          <canvas id="mv-fast-canvas" aria-label="模型视口" tabindex="0" hidden></canvas>
           <div class="mv-hint" id="mv-hint">把 3D 模型拖到这里，或点「打开模型…」</div>
+          <section class="mv-uv-panel" id="mv-uv-panel" aria-label="UV 展开图" hidden>
+            <div class="panel-head">
+              <span class="panel-title" id="mv-uv-name">UV</span>
+              <button class="btn small" id="mv-uv-close" type="button" aria-label="关闭 UV 视图">关闭</button>
+            </div>
+            <div class="ctrl-row mv-uv-elements" role="group" aria-label="UV 选择方式">
+              <button class="btn small" id="mv-uv-vertex" type="button">点</button>
+              <button class="btn small" id="mv-uv-edge" type="button">线</button>
+              <button class="btn small" id="mv-uv-face" type="button">面</button>
+              <button class="btn small" id="mv-uv-island" type="button">元素</button>
+            </div>
+            <canvas id="mv-uv-canvas" width="260" height="260"></canvas>
+            <div class="mv-uv-info" id="mv-uv-info"></div>
+            <button class="btn small mv-uv-export" id="mv-uv-export" type="button">导出 UV…</button>
+            <div class="mv-uv-grip" id="mv-uv-grip" title="向左或向下拖动调整 UV 视图大小"></div>
+          </section>
         </div>
-        <div class="ctrl-row wrap mv-toolbar">
+        <div class="ctrl-row wrap mv-toolbar" id="mv-fast-bar" hidden>
+          <select id="mv-fast-view" aria-label="标准视角">
+            <option value="iso">立体</option><option value="front">前</option><option value="back">后</option>
+            <option value="left">左</option><option value="right">右</option><option value="top">顶</option>
+          </select>
+          <button class="btn small" id="mv-solid" type="button">实体</button>
+          <button class="btn small" id="mv-fast-wire" type="button">线框</button>
+          <button class="btn small" id="mv-both" type="button">叠加</button>
+          <button class="btn small" id="mv-projection" type="button" title="切换透视 / 正交视图">透视视图</button>
+          <button class="btn small" id="mv-fast-grid" type="button">网格</button>
+          <button class="btn small" id="mv-origin" type="button">原点</button>
+          <button class="btn small" id="mv-fast-rotate" type="button">自动旋转</button>
+          <button class="btn small" id="mv-flat" type="button">平面着色</button>
+          <button class="btn small" id="mv-smooth" type="button">模型光滑组</button>
+          <button class="btn small" id="mv-vertices" type="button">顶点编号</button>
+          <button class="btn small" id="mv-normals" type="button">顶点法线</button>
+        </div>
+        <div class="ctrl-row wrap mv-toolbar" id="mv-uv-bar" hidden>
+          <button class="btn small" id="mv-uv-wire" type="button">显示 UV</button>
+          <button class="btn small" id="mv-uv-view" type="button">UV 视图</button>
+          <select id="mv-uv-set" aria-label="UV 通道"></select>
+          <button class="btn small" id="mv-texture" type="button">导入贴图…</button>
+          <button class="btn small" id="mv-texture-clear" type="button" disabled>清除贴图</button>
+          <button class="btn small" id="mv-texture-alpha" type="button" disabled>半透明</button>
+        </div>
+        <div class="ctrl-row wrap mv-toolbar" id="mv-anim-bar" hidden>
+          <select id="mv-take" aria-label="动画片段" hidden></select>
+          <button class="btn small" id="mv-first" type="button">首帧</button>
+          <button class="btn small" id="mv-prev" type="button">上一帧</button>
+          <button class="btn small" id="mv-play" type="button">播放</button>
+          <button class="btn small" id="mv-next" type="button">下一帧</button>
+          <input id="mv-timeline" type="range" min="0" max="1" step="1" value="0" aria-label="动画时间轴">
+          <span class="dim-label" id="mv-time"></span>
+          <button class="btn small" id="mv-unit" type="button" aria-label="切换帧 / 秒显示">帧</button>
+        </div>
+        <div class="ctrl-row wrap mv-toolbar" id="mv-webgl-bar" hidden>
           <label class="dim-label">检查通道</label>
           <select id="mv-channel" title="切换材质检查视图"></select>
           <label class="dim-label">背景</label>
@@ -2547,18 +2603,24 @@
           <select id="mv-clip" title="选择动画" aria-label="选择动画" disabled></select>
           <button class="btn small" id="mv-anim" type="button" disabled>播放动画</button>
         </div>
+        <div class="status" id="mv-uv-status" aria-live="polite"></div>
         <div class="status" id="mv-status"></div>
       </div>
       <div class="panel mv-side">
         <div class="panel-head"><span class="panel-title">模型信息</span></div>
         <div class="mv-scroll">
-          <div class="mv-group">
-            <div class="mv-group-title">统计</div>
-            <div class="mv-stats" id="mv-stats"></div>
+          <div class="mv-group" id="mv-fast-info" hidden>
+            <div class="mv-stats mv-fast-stats" id="mv-fast-stats"></div>
           </div>
-          <div class="mv-group">
-            <div class="mv-group-title">材质</div>
-            <div class="mv-matlist" id="mv-materials"></div>
+          <div id="mv-webgl-info" hidden>
+            <div class="mv-group">
+              <div class="mv-group-title">统计</div>
+              <div class="mv-stats" id="mv-stats"></div>
+            </div>
+            <div class="mv-group">
+              <div class="mv-group-title">材质</div>
+              <div class="mv-matlist" id="mv-materials"></div>
+            </div>
           </div>
         </div>
         <button class="btn small mv-help-button" id="mv-help-open" type="button" aria-haspopup="dialog" aria-controls="mv-help">说明</button>
@@ -2568,11 +2630,34 @@
         <h3>支持的格式</h3>
         <p id="mv-help-formats"></p>
         <h3>打开模型与外部资源</h3>
-        <p>可将模型拖入预览区，或点「打开模型…」。将贴图、.bin 和 .mtl 放在模型同目录下即可自动补齐，也可以多选后一同拖入。缺失的贴图会被剔除，相应材质以本色显示。</p>
-        <h3>视口操作与材质检查</h3>
-        <p>左键拖动旋转，右键拖动平移，滚轮缩放。地面网格按模型尺寸调整，贴在模型底面。检查通道遇到不含 PBR 数据的老式材质时，会显示占位灰并在状态栏提示。</p>
+        <p>可将模型拖入预览区，或点「打开模型…」。将 .bin 和 .mtl 放在模型同目录，或与模型一同拖入。使用「WebGL 材质检查」可查看原始贴图和 PBR 通道。贴图可放在模型同目录，或与模型一同拖入。</p>
+        <h3>流畅优先</h3>
+        <p>常见网格使用布丁看图的渲染方式。大模型在交互时降低分辨率，超过显示面数上限时抽样。其他格式或解析失败的模型会尝试用 WebGL 材质检查模式打开。</p>
+        <h3>视口操作</h3>
+        <p>左键拖动旋转，右键拖动平移，滚轮缩放。流畅预览支持拖入图片作为贴图。点「UV 视图」查看展开图，单击选择、Shift + 左键拖动框选、滚轮缩放。动画可用时间轴和逐帧按钮检查。</p>
         <form method="dialog">
           <button class="btn small" type="submit" autofocus>关闭</button>
+        </form>
+      </dialog>
+      <dialog class="mv-help" id="mv-uv-export-dialog" aria-labelledby="mv-uv-export-title">
+        <h2 id="mv-uv-export-title">导出 UV</h2>
+        <form method="dialog" class="mv-uv-export-form">
+          <label for="mv-uv-export-format">格式</label>
+          <select id="mv-uv-export-format"><option value="png">PNG</option><option value="tga">TGA</option></select>
+          <label for="mv-uv-export-size">尺寸</label>
+          <select id="mv-uv-export-size">
+            <option value="512">512 × 512</option><option value="1024" selected>1024 × 1024</option><option value="2048">2048 × 2048</option>
+          </select>
+          <label for="mv-uv-export-channel">UV 通道</label>
+          <select id="mv-uv-export-channel"></select>
+          <label for="mv-uv-export-edges">线框</label>
+          <select id="mv-uv-export-edges">
+            <option value="all">全部</option><option value="seams">接缝边</option><option value="visible">可见边</option><option value="solid">实体</option>
+          </select>
+          <div class="mv-uv-export-actions">
+            <button class="btn small" type="submit" value="cancel">取消</button>
+            <button class="btn small" type="submit" value="export">导出</button>
+          </div>
         </form>
       </dialog>
     </div>
