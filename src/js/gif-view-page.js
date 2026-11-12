@@ -85,6 +85,8 @@ export function initGifView({ view }) {
   const frameMenu = $('gv-frame-menu');
   const framesCount = $('gv-frames-count');
   const emptyFrames = $('gv-frames-empty');
+  const firstFrameBtn = $('gv-frames-first');
+  const lastFrameBtn = $('gv-frames-last');
   const hideFramesBtn = $('gv-frames-hide');
   const restoreFramesBtn = $('gv-frames-restore');
   const deleteFramesBtn = $('gv-frames-delete');
@@ -614,6 +616,7 @@ export function initGifView({ view }) {
   function syncStripActions() {
     const count = selectedFrames.size;
     const selectedHidden = [...selectedFrames].filter((src) => hiddenFrames.has(src)).length;
+    firstFrameBtn.disabled = lastFrameBtn.disabled = exporting || !keep.length;
     hideFramesBtn.disabled = exporting || count === selectedHidden;
     restoreFramesBtn.disabled = exporting || selectedHidden === 0;
     deleteFramesBtn.disabled = saveFramesBtn.disabled = exporting || count === 0;
@@ -765,6 +768,16 @@ export function initGifView({ view }) {
     selectionAnchor = src;
   }
 
+  function jumpStripFrame(index, focusCard = false) {
+    if (!keep.length || exporting) return;
+    setPlaying(false);
+    showFrame(index);
+    selectOnlyFrame(srcFrame(frameIndex));
+    syncStripSelection();
+    if (focusCard) currentCard?.focus({ preventScroll: true });
+    currentCard?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
   function previewSelectedFrame(src) {
     setPlaying(false);
     const index = logicalBySource.get(src);
@@ -869,13 +882,11 @@ export function initGifView({ view }) {
       e.target.closest?.('input, select, textarea, [contenteditable]')) return;
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
-    stepFrame(e.key === 'ArrowLeft' ? -1 : 1);
-    selectOnlyFrame(srcFrame(frameIndex));
-    syncStripSelection();
-    if (strip.contains(e.target)) currentCard?.focus({ preventScroll: true });
-    currentCard?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    jumpStripFrame(frameIndex + (e.key === 'ArrowLeft' ? -1 : 1), strip.contains(e.target));
   });
 
+  firstFrameBtn.addEventListener('click', () => jumpStripFrame(cutA));
+  lastFrameBtn.addEventListener('click', () => jumpStripFrame(cutB));
   hideFramesBtn.addEventListener('click', () => editSelectedFrames('hide'));
   restoreFramesBtn.addEventListener('click', () => editSelectedFrames('restore'));
   deleteFramesBtn.addEventListener('click', () => editSelectedFrames('delete'));
