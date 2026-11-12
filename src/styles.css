@@ -3641,10 +3641,15 @@ html.fc-fullscreen .page {
 }
 
 /* ===== GIF 动画预览帧栏 ===== */
-#page-gifview:not(.hidden) {
+:is(#page-gifview, #page-gif):not(.hidden) {
   display: grid;
-  grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  grid-template-columns: minmax(0, var(--gif-left, 1fr)) minmax(0, var(--gif-right, 1fr));
   grid-template-rows: minmax(0, 1fr) auto;
+}
+
+#page-gifview {
+  --gif-left: 58fr;
+  --gif-right: 42fr;
 }
 
 #page-gifview > .panel {
@@ -3669,7 +3674,7 @@ html.fc-fullscreen .page {
   margin-right: 0;
 }
 
-#gv-frames-count {
+.gv-frames-head [data-part="frames-count"] {
   margin-right: auto;
 }
 

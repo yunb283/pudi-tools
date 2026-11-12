@@ -1033,6 +1033,7 @@
         </div>
         <div class="io-row end" id="gif-io"></div>
       </div>
+      <section class="panel gv-frames" id="gif-frames" aria-label="GIF 帧缩略图" hidden></section>
     </div>
 
     <div class="page hidden" id="page-gifview">
@@ -1174,27 +1175,29 @@
         <div class="io-row end" id="gv-io"></div>
         <div class="status" id="gv-status"></div>
       </div>
-      <section class="panel gv-frames" id="gv-frames" aria-label="GIF 帧缩略图" hidden>
-        <div class="panel-head gv-frames-head">
-          <span class="panel-title" title="左键拖动滚动，右键打开帧操作，左右方向键切帧">帧缩略图</span>
-          <span class="dim-label" id="gv-frames-count" aria-live="polite"></span>
-          <button class="btn small" id="gv-frames-first" type="button" title="跳到当前帧区间的第一帧" disabled>首帧</button>
-          <button class="btn small" id="gv-frames-last" type="button" title="跳到当前帧区间的最后一帧" disabled>末帧</button>
-          <button class="btn small" id="gv-frames-hide" type="button" disabled>隐藏选中</button>
-          <button class="btn small" id="gv-frames-restore" type="button" disabled>恢复选中</button>
-          <button class="btn small" id="gv-frames-delete" type="button" title="从当前编辑中删除选中的帧" disabled>删除选中</button>
-          <button class="btn small" id="gv-frames-save" type="button" title="将选中的帧保存为 PNG" disabled>保存选中</button>
-        </div>
-        <div class="gv-strip" id="gv-strip" role="group" aria-label="GIF 帧，左右方向键切帧，Ctrl 多选，Shift 连选"></div>
-        <div class="gv-frame-menu" id="gv-frame-menu" role="menu" aria-label="帧操作" hidden>
-          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-hide">隐藏</button>
-          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-restore">恢复显示</button>
-          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-delete">删除</button>
-          <button type="button" role="menuitem" tabindex="-1" data-command="gv-frames-save">保存为 PNG</button>
-        </div>
-        <div class="dim-label" id="gv-frames-empty" hidden>所有帧均已删除。重新打开 GIF 可重新编辑。</div>
-      </section>
+      <section class="panel gv-frames" id="gv-frames" aria-label="GIF 帧缩略图" hidden></section>
     </div>
+
+    <template id="gif-frame-strip-template">
+      <div class="panel-head gv-frames-head">
+        <span class="panel-title" title="左键拖动滚动，右键打开帧操作，左右方向键切帧">帧缩略图</span>
+        <span class="dim-label" data-part="frames-count" aria-live="polite"></span>
+        <button class="btn small" data-part="frames-first" type="button" title="跳到当前帧区间的第一帧" disabled>首帧</button>
+        <button class="btn small" data-part="frames-last" type="button" title="跳到当前帧区间的最后一帧" disabled>末帧</button>
+        <button class="btn small" data-part="frames-hide" type="button" disabled>隐藏选中</button>
+        <button class="btn small" data-part="frames-restore" type="button" disabled>恢复选中</button>
+        <button class="btn small" data-part="frames-delete" type="button" title="从当前编辑中删除选中的帧" disabled>删除选中</button>
+        <button class="btn small" data-part="frames-save" type="button" title="将选中的帧保存为 PNG" disabled>保存选中</button>
+      </div>
+      <div class="gv-strip" data-part="strip" role="group" aria-label="GIF 帧，左右方向键切帧，Ctrl 多选，Shift 连选"></div>
+      <div class="gv-frame-menu" data-part="frame-menu" role="menu" aria-label="帧操作" hidden>
+        <button type="button" role="menuitem" tabindex="-1" data-command="frames-hide">隐藏</button>
+        <button type="button" role="menuitem" tabindex="-1" data-command="frames-restore">恢复显示</button>
+        <button type="button" role="menuitem" tabindex="-1" data-command="frames-delete">删除</button>
+        <button type="button" role="menuitem" tabindex="-1" data-command="frames-save">保存为 PNG</button>
+      </div>
+      <div class="dim-label" data-part="frames-empty" hidden>所有帧均已删除。重新打开 GIF 可重新编辑。</div>
+    </template>
 
     <div class="page hidden" id="page-video">
       <div class="panel" style="flex: 58">

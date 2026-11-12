@@ -20,6 +20,7 @@ import { humanSize } from './decode.js';
 import { parseGif, createGifCompositor, gifDelaysMs, frameAtTime } from './gif-decode.js';
 import { gifParams, gifHeader, gifFrameBytes, gifTableFor, gifTrailer, gifConcat } from './gif.js';
 import { createIoButtons } from './io-buttons.js';
+import { createGifFrameStrip } from './gif-frame-strip.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -80,17 +81,6 @@ export function initGifView({ view }) {
   const outInfo = $('gv-out-info');
   const exportBtn = $('gv-export');
   const exportFrameBtn = $('gv-export-frame');
-  const framePanel = $('gv-frames');
-  const strip = $('gv-strip');
-  const frameMenu = $('gv-frame-menu');
-  const framesCount = $('gv-frames-count');
-  const emptyFrames = $('gv-frames-empty');
-  const firstFrameBtn = $('gv-frames-first');
-  const lastFrameBtn = $('gv-frames-last');
-  const hideFramesBtn = $('gv-frames-hide');
-  const restoreFramesBtn = $('gv-frames-restore');
-  const deleteFramesBtn = $('gv-frames-delete');
-  const saveFramesBtn = $('gv-frames-save');
   const io = createIoButtons($('gv-io'), setStatus);
 
   // 合成器给的是整幅 RGBA，先进这张 canvas 再交给视图缩放画出去。
@@ -113,8 +103,6 @@ export function initGifView({ view }) {
   const logicalBySource = new Map();
   const hiddenFrames = new Set();
   const deletedFrames = new Set();
-  const selectedFrames = new Set();
-  let selectionAnchor = null;
   let name = '';
   let sourcePath = null;
   let fileSize = 0;
@@ -187,7 +175,7 @@ export function initGifView({ view }) {
     }
     // 单帧 GIF 没什么可播的，按钮留着只会让人以为坏了
     syncPlayBtn();
-    syncStripActions();
+    frameStrip.refreshActions();
   }
 
   function syncPlayBtn() {
@@ -375,7 +363,7 @@ export function initGifView({ view }) {
     const elapsed = play.cum[at];
     timeLabel.textContent = `${elapsed === undefined ? '—' : fmtTime(elapsed)} / ${fmtTime(play.total)}`;
     updatePos();
-    syncCurrentCard();
+    frameStrip.setCurrent(srcFrame(frameIndex));
   }
 
   // 合成器只能往前推，倒退要重跑；这一层缓存把「最近看过的帧」留着，
@@ -435,7 +423,7 @@ export function initGifView({ view }) {
       if (frameIndex < cutA || frameIndex > cutB) showFrame(cutA);
       playStart = performance.now() - play.cum[frameIndex - cutA];
       playRaf = requestAnimationFrame(tick);
-    } else scheduleThumbnails();
+    } else frameStrip.scheduleThumbnails();
   }
 
   function stepFrame(delta) {
@@ -479,7 +467,7 @@ export function initGifView({ view }) {
       view.setImage(null);
       timeLabel.textContent = '00:00.00 / 00:00.00';
       updatePos();
-      syncCurrentCard();
+      frameStrip.setCurrent(srcFrame(frameIndex));
     }
     if (playing) playStart = performance.now() - play.cum[frameIndex - cutA];
   }
@@ -543,8 +531,8 @@ export function initGifView({ view }) {
     frameIndex = next < 0 ? cutB : next;
     frameSelCommitted(false);
     setEnabled();
-    syncFrameCards();
-    scheduleThumbnails();
+    frameStrip.refresh();
+    frameStrip.scheduleThumbnails();
   }
 
   function applyDrop(next) {
@@ -554,151 +542,49 @@ export function initGifView({ view }) {
 
   // ---------- 帧缩略图 ----------
 
-  const cards = new Map();
-  const visibleCards = new Set();
-  const thumbSource = document.createElement('canvas');
-  const thumbCtx = thumbSource.getContext('2d');
-  let thumbRaf = 0;
-  let currentCard = null;
-  let stripDrag = null;
-  let suppressStripClick = false;
-  let menuAnchor = null;
-  const thumbObserver = new IntersectionObserver((entries) => {
-    for (const { target, isIntersecting } of entries) {
-      const card = cards.get(Number(target.dataset.source));
-      if (card?.button !== target) continue;
-      if (isIntersecting) visibleCards.add(card);
-      else {
-        visibleCards.delete(card);
-        card.image.replaceChildren();
-      }
-    }
-    scheduleThumbnails();
-  }, { root: strip, rootMargin: '0px 120px' });
-
-  function scheduleThumbnails() {
-    if (thumbRaf || !parsed || exporting || playing) return;
-    if ([...visibleCards].some((card) => !card.image.firstChild)) {
-      thumbRaf = requestAnimationFrame(drawThumbnails);
-    }
-  }
-
-  function drawThumbnails() {
-    thumbRaf = 0;
-    if (!parsed || exporting || playing) return;
-    const { width, height } = parsed;
-    if (thumbSource.width !== width) thumbSource.width = width;
-    if (thumbSource.height !== height) thumbSource.height = height;
-    const scale = Math.min(108 / width, 72 / height);
-    const until = performance.now() + 6;
-    // 只合成视口附近的缩略图，复用预览的缓存，大文件打开时无需先合成每一帧。
-    for (const card of visibleCards) {
-      if (card.image.firstChild) continue;
-      thumbCtx.putImageData(new ImageData(frameBySource(card.source), width, height), 0, 0);
-      const thumb = document.createElement('canvas');
-      thumb.width = Math.max(1, Math.round(width * scale));
-      thumb.height = Math.max(1, Math.round(height * scale));
-      thumb.getContext('2d').drawImage(thumbSource, 0, 0, thumb.width, thumb.height);
-      card.image.append(thumb);
-      if (performance.now() >= until) break;
-    }
-    scheduleThumbnails();
-  }
-
-  function syncCurrentCard() {
-    const next = cards.get(srcFrame(frameIndex))?.button;
-    if (currentCard === next) return;
-    currentCard?.removeAttribute('aria-current');
-    currentCard = next;
-    currentCard?.setAttribute('aria-current', 'true');
-  }
-
-  function syncStripActions() {
-    const count = selectedFrames.size;
-    const selectedHidden = [...selectedFrames].filter((src) => hiddenFrames.has(src)).length;
-    firstFrameBtn.disabled = lastFrameBtn.disabled = exporting || !keep.length;
-    hideFramesBtn.disabled = exporting || count === selectedHidden;
-    restoreFramesBtn.disabled = exporting || selectedHidden === 0;
-    deleteFramesBtn.disabled = saveFramesBtn.disabled = exporting || count === 0;
-    framesCount.textContent = `${keep.length} 帧播放 · 已选 ${count} 帧` +
-      (hiddenFrames.size ? ` · ${hiddenFrames.size} 帧隐藏` : '');
-  }
-
-  function syncFrameCards() {
-    for (const [src, card] of cards) {
+  const frameStrip = createGifFrameStrip({
+    prefix: 'gv',
+    getFrame(src) {
+      return { width: parsed.width, height: parsed.height, data: frameBySource(src) };
+    },
+    getDetails(src) {
       const index = logicalBySource.get(src);
-      const hidden = hiddenFrames.has(src);
-      const label = hidden ? '已隐藏' : index === undefined ? '抽帧跳过' : '';
-      const delay = index === undefined ? sourceMs[src] : frameDelay(index);
-      card.button.classList.toggle('excluded', !!label);
-      card.button.classList.toggle('is-hidden', hidden);
-      card.delay.textContent = `${delay} ms`;
-      card.hiddenBadge.hidden = !hidden;
-      card.hiddenBadge.textContent = hidden ? label : '';
-      card.state.textContent = hidden ? '' : label;
-      card.state.hidden = hidden || !label;
-      card.button.title = `源第 ${src + 1} 帧 · ${delay} ms${label ? ' · ' + label : ''}`;
-      card.button.setAttribute('aria-label', card.button.title);
-    }
-    emptyFrames.hidden = cards.size !== 0;
-    strip.hidden = cards.size === 0;
-    syncCurrentCard();
-    syncStripSelection();
-  }
-
-  function syncStripSelection() {
-    for (const [src, { button }] of cards) {
-      const value = String(selectedFrames.has(src));
-      if (button.getAttribute('aria-pressed') !== value) button.setAttribute('aria-pressed', value);
-    }
-    syncStripActions();
-  }
+      return {
+        hidden: hiddenFrames.has(src),
+        skipped: index === undefined,
+        delay: index === undefined ? sourceMs[src] : frameDelay(index),
+      };
+    },
+    activeCount: () => keep.length,
+    hiddenCount: () => hiddenFrames.size,
+    isLocked: () => exporting,
+    pauseThumbnails: () => !parsed || playing,
+    onPreview(src) {
+      setPlaying(false);
+      const index = logicalBySource.get(src);
+      if (index !== undefined) showFrame(index, true);
+    },
+    onNavigate(direction) {
+      setPlaying(false);
+      const index = { first: cutA, last: cutB, prev: frameIndex - 1, next: frameIndex + 1 }[direction];
+      showFrame(index);
+      return srcFrame(frameIndex);
+    },
+    onEdit: editSelectedFrames,
+    onSave: exportFrames,
+  });
 
   function resetFrameStrip() {
-    closeFrameMenu();
-    endStripDrag();
-    suppressStripClick = false;
-    if (thumbRaf) cancelAnimationFrame(thumbRaf);
-    thumbRaf = 0;
-    thumbObserver.disconnect();
-    cards.clear();
-    visibleCards.clear();
-    selectedFrames.clear();
     hiddenFrames.clear();
     deletedFrames.clear();
-    currentCard = null;
-    selectionAnchor = null;
-    thumbSource.width = thumbSource.height = 1;
-    strip.replaceChildren();
-    strip.scrollLeft = 0;
-    framePanel.hidden = !parsed;
-    if (!parsed) return;
-    const fragment = document.createDocumentFragment();
-    for (let source = 0; source < parsed.frames.length; source++) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'gv-frame';
-      button.dataset.source = String(source);
-      button.innerHTML = '<span class="gv-frame-image" aria-hidden="true">' +
-        '<span class="gv-frame-pixels"></span><span class="gv-frame-hidden" hidden></span></span>' +
-        '<span class="gv-frame-caption"><span></span><span></span></span>' +
-        '<span class="gv-frame-state"></span>';
-      const [preview, caption, state] = button.children;
-      const [image, hiddenBadge] = preview.children;
-      const [number, delay] = caption.children;
-      number.textContent = String(source + 1);
-      cards.set(source, { source, button, image, hiddenBadge, delay, state });
-      fragment.append(button);
-    }
-    strip.append(fragment);
-    for (const { button } of cards.values()) thumbObserver.observe(button);
+    frameStrip.reset(parsed?.frames.length || 0, !!parsed);
   }
 
-  function editSelectedFrames(action) {
-    if (!parsed || exporting || !selectedFrames.size) return;
+  function editSelectedFrames(action, sources) {
+    if (!parsed || exporting || !sources.length) return;
     let changed = 0;
     rebuildEditedTimeline(() => {
-      for (const src of selectedFrames) {
+      for (const src of sources) {
         if (action === 'hide') {
           if (hiddenFrames.has(src)) continue;
           hiddenFrames.add(src);
@@ -707,189 +593,14 @@ export function initGifView({ view }) {
         } else {
           hiddenFrames.delete(src);
           deletedFrames.add(src);
-          const card = cards.get(src);
-          thumbObserver.unobserve(card.button);
-          visibleCards.delete(card);
-          cards.delete(src);
-          card.button.remove();
         }
         changed++;
       }
-      if (action === 'delete') {
-        selectedFrames.clear();
-        selectionAnchor = null;
-      }
+      if (action === 'delete') frameStrip.remove(sources);
     });
     const verb = { hide: '隐藏', restore: '恢复', delete: '删除' }[action];
     setStatus(`已${verb} ${changed} 帧`);
   }
-
-  function endStripDrag() {
-    stripDrag = null;
-    strip.classList.remove('dragging');
-  }
-
-  strip.addEventListener('pointerdown', (e) => {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return;
-    suppressStripClick = false;
-    const contentBottom = strip.getBoundingClientRect().top + strip.clientTop + strip.clientHeight;
-    if (e.clientY >= contentBottom || strip.scrollWidth <= strip.clientWidth) return;
-    stripDrag = { id: e.pointerId, x: e.clientX, scrollLeft: strip.scrollLeft };
-  });
-  window.addEventListener('pointermove', (e) => {
-    if (stripDrag?.id !== e.pointerId) return;
-    if (!(e.buttons & 1)) {
-      endStripDrag();
-      return;
-    }
-    const dx = e.clientX - stripDrag.x;
-    if (!suppressStripClick) {
-      if (Math.abs(dx) < 5) return;
-      strip.setPointerCapture(e.pointerId);
-      strip.classList.add('dragging');
-      suppressStripClick = true;
-    }
-    e.preventDefault();
-    strip.scrollLeft = stripDrag.scrollLeft - dx;
-  }, { passive: false });
-  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-    window.addEventListener(event, (e) => {
-      if (stripDrag?.id === e.pointerId) endStripDrag();
-    });
-  }
-  window.addEventListener('blur', () => {
-    endStripDrag();
-    closeFrameMenu();
-  });
-
-  function selectOnlyFrame(src) {
-    selectedFrames.clear();
-    selectedFrames.add(src);
-    selectionAnchor = src;
-  }
-
-  function jumpStripFrame(index, focusCard = false) {
-    if (!keep.length || exporting) return;
-    setPlaying(false);
-    showFrame(index);
-    selectOnlyFrame(srcFrame(frameIndex));
-    syncStripSelection();
-    if (focusCard) currentCard?.focus({ preventScroll: true });
-    currentCard?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
-
-  function previewSelectedFrame(src) {
-    setPlaying(false);
-    const index = logicalBySource.get(src);
-    if (index !== undefined) showFrame(index, true);
-    syncStripSelection();
-  }
-
-  strip.addEventListener('click', (e) => {
-    if (suppressStripClick && e.detail > 0) {
-      suppressStripClick = false;
-      return;
-    }
-    const button = e.target.closest('.gv-frame');
-    if (!button || exporting) return;
-    const src = Number(button.dataset.source);
-    const additive = e.ctrlKey || e.metaKey;
-    if (e.shiftKey && selectionAnchor !== null) {
-      if (!additive) selectedFrames.clear();
-      const lo = Math.min(src, selectionAnchor);
-      const hi = Math.max(src, selectionAnchor);
-      for (const index of cards.keys()) {
-        if (index >= lo && index <= hi) selectedFrames.add(index);
-      }
-    } else if (additive) {
-      if (selectedFrames.has(src)) selectedFrames.delete(src);
-      else selectedFrames.add(src);
-      selectionAnchor = src;
-    } else selectOnlyFrame(src);
-    previewSelectedFrame(src);
-  });
-
-  strip.addEventListener('keydown', (e) => {
-    if (exporting || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return;
-    e.preventDefault();
-    for (const src of cards.keys()) selectedFrames.add(src);
-    syncStripSelection();
-  });
-
-  function closeFrameMenu(restoreFocus = false) {
-    if (frameMenu.hidden) return;
-    frameMenu.hidden = true;
-    if (restoreFocus) menuAnchor?.focus({ preventScroll: true });
-    menuAnchor = null;
-  }
-
-  strip.addEventListener('contextmenu', (e) => {
-    const button = e.target.closest('.gv-frame');
-    if (!button || exporting) return;
-    e.preventDefault();
-    const src = Number(button.dataset.source);
-    if (!selectedFrames.has(src)) selectOnlyFrame(src);
-    previewSelectedFrame(src);
-    menuAnchor = button;
-    for (const item of frameMenu.querySelectorAll('[data-command]')) {
-      item.hidden = $(item.dataset.command).disabled;
-    }
-    frameMenu.hidden = false;
-    const anchor = button.getBoundingClientRect();
-    const x = e.clientX || anchor.left;
-    const y = e.clientY || anchor.bottom;
-    frameMenu.style.left = `${Math.max(4, Math.min(x, innerWidth - frameMenu.offsetWidth - 4))}px`;
-    frameMenu.style.top = `${Math.max(4, Math.min(y, innerHeight - frameMenu.offsetHeight - 4))}px`;
-    frameMenu.querySelector('[data-command]:not([hidden])')?.focus({ preventScroll: true });
-  });
-
-  function runFrameCommand(item) {
-    closeFrameMenu(true);
-    $(item.dataset.command).click();
-  }
-
-  frameMenu.addEventListener('click', (e) => {
-    const item = e.target.closest('[data-command]');
-    if (item) runFrameCommand(item);
-  });
-  frameMenu.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' || e.key === 'Tab') {
-      if (e.key === 'Escape') e.preventDefault();
-      closeFrameMenu(true);
-      return;
-    }
-    const items = [...frameMenu.querySelectorAll('[data-command]:not([hidden])')];
-    const current = items.indexOf(document.activeElement);
-    if (e.key === 'Enter' && current >= 0) {
-      e.preventDefault();
-      runFrameCommand(items[current]);
-    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const next = (current + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
-      items[next]?.focus({ preventScroll: true });
-    }
-  });
-  document.addEventListener('pointerdown', (e) => {
-    if (!frameMenu.contains(e.target)) closeFrameMenu();
-  });
-  strip.addEventListener('scroll', () => closeFrameMenu());
-  window.addEventListener('resize', () => closeFrameMenu());
-
-  const page = framePanel.closest('.page');
-  document.addEventListener('keydown', (e) => {
-    if (page.classList.contains('hidden') || !frameMenu.hidden || !keep.length || exporting) return;
-    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey ||
-      e.target.closest?.('input, select, textarea, [contenteditable]')) return;
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    jumpStripFrame(frameIndex + (e.key === 'ArrowLeft' ? -1 : 1), strip.contains(e.target));
-  });
-
-  firstFrameBtn.addEventListener('click', () => jumpStripFrame(cutA));
-  lastFrameBtn.addEventListener('click', () => jumpStripFrame(cutB));
-  hideFramesBtn.addEventListener('click', () => editSelectedFrames('hide'));
-  restoreFramesBtn.addEventListener('click', () => editSelectedFrames('restore'));
-  deleteFramesBtn.addEventListener('click', () => editSelectedFrames('delete'));
 
   // ---------- 导出 ----------
 
@@ -997,7 +708,7 @@ export function initGifView({ view }) {
         comp.reset();
         setEnabled();
         showFrame(frameIndex, true);
-        scheduleThumbnails();
+        frameStrip.scheduleThumbnails();
       }
     }
   }
@@ -1049,7 +760,7 @@ export function initGifView({ view }) {
       if (my === exportId) {
         exporting = false;
         setEnabled();
-        scheduleThumbnails();
+        frameStrip.scheduleThumbnails();
       }
     }
   }
@@ -1107,7 +818,7 @@ export function initGifView({ view }) {
       updateInfo();
       updateOutInfo();
       showFrame(0);
-      syncFrameCards();
+      frameStrip.refresh();
       io.setSource(entry.path);
       io.setExport(null);
       setStatus(`已解码 ${p.frames.length} 帧，用时 ${ms < 10 ? ms.toFixed(1) : Math.round(ms)}ms`);
@@ -1221,7 +932,7 @@ export function initGifView({ view }) {
     rebuildPlay();
     updateOutInfo();
     showFrame(frameIndex, true);
-    syncFrameCards();
+    frameStrip.refresh();
     if (playing) playStart = performance.now() - play.cum[frameIndex - cutA];
   });
   const clampedIn = (el) => {
@@ -1249,7 +960,6 @@ export function initGifView({ view }) {
   exportFrameBtn.addEventListener('click', () => {
     if (keep.length) exportFrames([srcFrame(frameIndex)]);
   });
-  saveFramesBtn.addEventListener('click', () => exportFrames([...selectedFrames].sort((a, b) => a - b)));
 
   setEnabled();
   syncCropMode(); // 框选默认关着：左键先是平移，进了裁剪模式才接管

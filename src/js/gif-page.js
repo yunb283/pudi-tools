@@ -17,7 +17,7 @@ import {
   GIF_SOURCE_EXTS,
 } from './platform.js';
 import { decodeToCanvas, FORMAT_NAME, extOf, humanSize } from './decode.js';
-import { cellRect, cropCanvas, canvasToImageData } from './image-util.js';
+import { cellRect, cropCanvas, canvasToImageData, canvasToBlob } from './image-util.js';
 import { autoDetectGrid } from './detect.js';
 import {
   gifStart,
@@ -32,6 +32,7 @@ import {
 } from './gif.js';
 import { equalizeCanvases } from './layout.js';
 import { createIoButtons } from './io-buttons.js';
+import { createGifFrameStrip } from './gif-frame-strip.js';
 
 const $ = (id) => document.getElementById(id);
 const SCALE = [100, 75, 50, 25];
@@ -88,8 +89,6 @@ export function initGif({ srcView }) {
   const tOut = $('gif-t-out');
   const autoBtn = $('gif-auto');
 
-  const relayout = equalizeCanvases($('page-gif'));
-
   let mode = null; // 'image' | 'video'
   let srcCanvas = null;
   let videoMeta = null; // {src, w, h, duration}
@@ -106,14 +105,23 @@ export function initGif({ srcView }) {
   let chunkCache = null; // 帧字节缓存：编码参数没变时改循环次数只需重拼文件头
   let pullMs = null; // 最近一次抽帧耗时；缓存命中时为 null
   let curFrames = [];
-  let allFrames = []; // 这一轮抽出来的全部帧；帧区间只从这里切一段去编码，不重新抽帧
-  // 用户想要的区间（闭区间，索引进 allFrames）。full 表示没裁过，
-  // 帧数一变（改帧率/改时间段）就靠它退回全区间，而不是留着上一个源上的旧端点
+  let sourceFrames = []; // 本轮拆帧或抽帧的原始顺序
+  let frameBasis = '';
+  let allFrames = []; // 排除手动隐藏和删除后，参与区间计算的帧
+  let activeIds = [];
+  let previewIds = [];
+  let previewDelay = gifDelayForFps(15);
+  let previewLoops = 0;
+  const hiddenFrames = new Set();
+  const deletedFrames = new Set();
+  let sourceSelection = null;
+  // 生效的闭区间索引进 allFrames，源帧边界另存，便于隐藏或恢复后重新定位。
   let frameSel = { a: 0, b: 0, full: true };
   let frDrag = null; // 帧区间轴正在拖：{which:'a'|'b'|'band', grab, w, n, was}
-  let result = null; // {bytes, count, w, h, delay, loops}
+  let result = null; // 最近一次生成的 GIF
   let playing = true;
   let frameIndex = 0;
+  let outsideSource = null;
   let runId = 0;
   let rafId = 0;
   let tlDrag = null; // 时间轴正在拖：{which:'seek'|'a'|'b'|'band', grab, w}
@@ -129,11 +137,39 @@ export function initGif({ srcView }) {
 
   // 导出按钮兼作进度条：抽帧、编码各从左边填到满，满了再换下一阶段
   let busy = false;
+  let savingFrames = false;
+  const frameStrip = createGifFrameStrip({
+    prefix: 'gif',
+    getFrame: (src) => sourceFrames[src],
+    getDetails: (src) => ({ hidden: hiddenFrames.has(src), delay: previewDelay * 10 }),
+    activeCount: () => allFrames.length,
+    hiddenCount: () => hiddenFrames.size,
+    isLocked: () => busy || savingFrames,
+    pauseThumbnails: () => !sourceFrames.length,
+    onPreview(src) {
+      setPlaying(false);
+      const index = previewIds.indexOf(src);
+      if (index >= 0) showFrame(index);
+      else if (activeIds.includes(src)) showSourceFrame(src);
+    },
+    onNavigate(direction) {
+      setPlaying(false);
+      const last = curFrames.length - 1;
+      const from = outsideSource === null ? frameIndex : outsideSource < previewIds[0] ? -1 : last + 1;
+      const index = { first: 0, last, prev: from - 1, next: from + 1 }[direction];
+      showFrame(index);
+      return previewIds[frameIndex];
+    },
+    onEdit: editSelectedFrames,
+    onSave: saveSelectedFrames,
+  });
+  const relayout = equalizeCanvases($('page-gif'));
 
   function setProgress(phase, ratio = 0) {
+    const wasBusy = busy;
     busy = phase === 'pull' || phase === 'encode';
     exportBtn.classList.toggle('busy', busy);
-    exportBtn.disabled = !result || busy;
+    exportBtn.disabled = busy || (!result && !curFrames.length);
     exportBtn.textContent =
       phase === 'pull' ? '正在抽帧' : phase === 'encode' ? '正在编码' : '导出 GIF';
     if (busy) {
@@ -144,6 +180,11 @@ export function initGif({ srcView }) {
     }
     // 进入和退出都要立刻刷一次：否则暂停时没有 timeupdate，播放头会留在原地
     updateTimeUI();
+    if (busy !== wasBusy) {
+      for (const el of [frAIn, frBIn, frAllBtn]) el.disabled = busy || !allFrames.length;
+      frameStrip.refreshActions();
+      if (!busy) frameStrip.scheduleThumbnails();
+    }
   }
 
   const curFps = () => Math.min(30, Math.max(1, Math.round(Number(fpsIn.value)) || 15));
@@ -223,13 +264,6 @@ export function initGif({ srcView }) {
     )}`;
   }
 
-  // GIF 总时长：只说「几分几秒」，四舍五入到整秒就够看（帧延时是整数 1/100 秒，乘完再取整）
-  function fmtDur(sec) {
-    const t = Math.round(sec);
-    if (t < 1) return '不到 1 秒';
-    return t >= 60 ? `${Math.floor(t / 60)}分${t % 60}秒` : `${t}秒`;
-  }
-
   // 手动输入的时间：接受纯秒数，也接受 分:秒 和 时:分:秒.厘秒；解不出来给 null
   function parseTime(str) {
     const s = String(str).trim();
@@ -282,7 +316,7 @@ export function initGif({ srcView }) {
 
   function setEnabled(on) {
     clearBtn.disabled = !on;
-    exportBtn.disabled = !on || busy;
+    exportBtn.disabled = !on || busy || (!result && !curFrames.length);
     for (const el of [scaleSel, fpsIn, loopSel, colorSel, qualitySel]) el.disabled = !on;
     // 列/行只对图片有意义
     colsIn.disabled = !on || mode !== 'image';
@@ -547,14 +581,26 @@ export function initGif({ srcView }) {
   function showFrame(i) {
     if (!curFrames.length) return;
     frameIndex = Math.min(curFrames.length - 1, Math.max(0, i));
-    const f = curFrames[frameIndex];
-    frameCanvas.width = f.width;
-    frameCanvas.height = f.height;
+    outsideSource = null;
+    drawFrame(curFrames[frameIndex]);
+    frameStrip.setCurrent(previewIds[frameIndex]);
+    frameRange.value = String(frameIndex + 1);
+    frameLabel.textContent = `第 ${frameIndex + 1}/${curFrames.length} 帧`;
+  }
+
+  function showSourceFrame(src) {
+    outsideSource = src;
+    drawFrame(sourceFrames[src]);
+    frameStrip.setCurrent(src);
+    frameLabel.textContent = `区间外 · 源第 ${src + 1} 帧`;
+  }
+
+  function drawFrame(f) {
+    if (frameCanvas.width !== f.width) frameCanvas.width = f.width;
+    if (frameCanvas.height !== f.height) frameCanvas.height = f.height;
     frameCanvas
       .getContext('2d', { willReadFrequently: true })
       .putImageData(new ImageData(f.data, f.width, f.height), 0, 0);
-    frameRange.value = String(frameIndex + 1);
-    frameLabel.textContent = `第 ${frameIndex + 1}/${curFrames.length} 帧`;
   }
 
   // 播放位置按「距离起播的绝对时间 / 帧延迟」推算，不在定时器里累加：
@@ -566,17 +612,18 @@ export function initGif({ srcView }) {
 
   function tickFrameSync() {
     playRaf = 0;
-    if (!playing || !result) return;
-    const i = Math.floor((performance.now() - playStart) / (result.delay * 10));
-    const n = result.loops ? Math.min(i + 1, result.count * result.loops) : i + 1;
-    const idx = (n - 1) % result.count;
+    if (!playing || !curFrames.length) return;
+    const count = curFrames.length;
+    const i = Math.floor((performance.now() - playStart) / (previewDelay * 10));
+    const n = previewLoops ? Math.min(i + 1, count * previewLoops) : i + 1;
+    const idx = (n - 1) % count;
     if (idx !== frameIndex) showFrame(idx); // 帧号没变就别重画：60Hz 刷 putImageData 是白干
     playRaf = requestAnimationFrame(tickFrameSync);
   }
 
   function startFrameSync() {
     stopFrameSync();
-    playStart = performance.now() - frameIndex * result.delay * 10;
+    playStart = performance.now() - frameIndex * previewDelay * 10;
     tickFrameSync();
   }
 
@@ -586,30 +633,35 @@ export function initGif({ srcView }) {
   }
 
   function setPlaying(on) {
-    playing = !!on && !!result;
-    for (const el of [playBtn, prevBtn, nextBtn, frameRange]) el.disabled = !result;
+    playing = !!on && curFrames.length > 0;
     playBtn.textContent = playing ? '暂停动画' : '播放动画';
     playBtn.classList.toggle('on', playing);
-    refreshPreview();
+    if (playing) {
+      if (outsideSource !== null) showFrame(0);
+      startFrameSync();
+    } else stopFrameSync();
   }
 
   function refreshPreview() {
-    if (!result) return;
-    for (const el of [playBtn, prevBtn, nextBtn, frameRange]) el.disabled = false;
-    for (const el of [frAIn, frBIn, frAllBtn]) el.disabled = !allFrames.length;
-    frameRange.max = String(result.count);
-    frameIndex = Math.min(frameIndex, result.count - 1);
-    playBtn.textContent = playing ? '暂停动画' : '播放动画';
-    playBtn.classList.toggle('on', playing);
-    frameCanvas.hidden = false;
-    showFrame(frameIndex); // 先画当前帧：定时器只在帧号变了才画，不然新结果一上来是空 canvas
-    if (playing) startFrameSync();
-    else stopFrameSync();
+    const count = curFrames.length;
+    for (const el of [playBtn, prevBtn, nextBtn, frameRange]) el.disabled = !count;
+    for (const el of [frAIn, frBIn, frAllBtn]) el.disabled = busy || !allFrames.length;
+    frameRange.max = String(count || 1);
+    frameCanvas.hidden = !count;
+    if (count) showFrame(frameIndex);
+    else {
+      outsideSource = null;
+      frameIndex = 0;
+      frameRange.value = '1';
+      frameLabel.textContent = '-';
+      frameStrip.setCurrent(undefined);
+    }
+    setPlaying(playing);
   }
 
   // 逐帧步进：先看单帧，所以在播就停住。frameIndex 是定时器最后画到的那一帧，从它接着走
   function stepFrame(delta) {
-    if (!result) return;
+    if (!curFrames.length) return;
     if (playing) setPlaying(false);
     showFrame(frameIndex + delta);
   }
@@ -685,6 +737,7 @@ export function initGif({ srcView }) {
     const lo = Math.min(Math.max(0, Math.round(a)), n - 1);
     const hi = Math.min(Math.max(lo, Math.round(b)), n - 1);
     frameSel = { a: lo, b: hi, full: lo === 0 && hi === n - 1 };
+    sourceSelection = frameSel.full ? null : [activeIds[lo], activeIds[hi]];
     syncFrUI();
   }
 
@@ -696,7 +749,10 @@ export function initGif({ srcView }) {
     frTl.classList.toggle('loaded', n > 0);
     frAIn.max = String(n || 1);
     frBIn.max = String(n || 1);
-    if (!n) return;
+    if (!n) {
+      frAIn.value = frBIn.value = '1';
+      return;
+    }
     frBand.style.left = `${(a / n) * 100}%`;
     frBand.style.width = `${((b - a + 1) / n) * 100}%`;
     frAIn.value = String(a + 1);
@@ -706,12 +762,7 @@ export function initGif({ srcView }) {
   // 区间定了才重编：切片换了，帧数、时长、体积、导出字节全跟着变
   function frameSelCommitted() {
     if (!allFrames.length) return;
-    frameIndex = 0; // 切片换了，原来的帧号在新切片里没有对应，从新区间第一帧接着看
-    if (!autoExtract) {
-      updateInfo();
-      return;
-    }
-    render();
+    regenerateSelection(true);
   }
 
   function frFrac(e) {
@@ -722,7 +773,7 @@ export function initGif({ srcView }) {
   // 拖轴：两端手柄改端点，黄带整体平移；轨道空白处不动作 —— 定位有上面那根逐帧滑块
   function frDown(e) {
     const n = allFrames.length;
-    if (n < 2) return;
+    if (n < 2 || busy) return;
     const which =
       e.target === frAGrip ? 'a' : e.target === frBGrip ? 'b' : e.target === frBand ? 'band' : null;
     if (!which) return;
@@ -762,6 +813,123 @@ export function initGif({ srcView }) {
     frameSelCommitted();
   }
 
+  // 帧编号只在网格或视频采样时刻变化时重建，缩放和编码设置不影响已做的编辑。
+  function frameBasisKey() {
+    return mode === 'image'
+      ? `image:${clamped(colsIn, 1, 128)}x${clamped(rowsIn, 1, 128)}`
+      : `video:${range.t0}:${range.t1}:${curFps()}`;
+  }
+
+  function resetFrameSequence() {
+    sourceFrames = [];
+    frameBasis = '';
+    allFrames = [];
+    activeIds = [];
+    hiddenFrames.clear();
+    deletedFrames.clear();
+    sourceSelection = null;
+    frameSel = { a: 0, b: 0, full: true };
+    frDrag = null;
+    frameStrip.reset();
+    preparePreview(true);
+  }
+
+  function rebuildAvailableFrames() {
+    const frames = [];
+    activeIds = [];
+    for (let src = 0; src < sourceFrames.length; src++) {
+      if (hiddenFrames.has(src) || deletedFrames.has(src)) continue;
+      activeIds.push(src);
+      frames.push(sourceFrames[src]);
+    }
+    allFrames = frames.length === sourceFrames.length ? sourceFrames : frames;
+    if (sourceSelection && activeIds.length) {
+      const [first, last] = sourceSelection;
+      const start = activeIds.findIndex((src) => src >= first);
+      const a = start < 0 ? activeIds.length - 1 : start;
+      const b = Math.max(a, activeIds.findLastIndex((src) => src <= last));
+      frameSel = { a, b, full: false };
+    }
+  }
+
+  function installFrames(frames, basis) {
+    if (frameBasis !== basis) {
+      frameBasis = basis;
+      hiddenFrames.clear();
+      deletedFrames.clear();
+      sourceSelection = null;
+      frameSel = { a: 0, b: 0, full: true };
+      sourceFrames = frames;
+      frameStrip.reset(frames.length);
+    } else {
+      if (sourceFrames === frames) return;
+      sourceFrames = frames;
+      frameStrip.invalidateThumbnails();
+    }
+    rebuildAvailableFrames();
+  }
+
+  function updateFrameOutput(frames, delay, bytes) {
+    if (!frames.length) {
+      updateOut(sourceFrames.length ? 'GIF：0 帧  |  时长 00:00:00.00' : 'GIF：-  |  尺寸：-  |  体积：-');
+      return;
+    }
+    const { a, b } = curSel();
+    const cropped = frames.length !== allFrames.length;
+    const { width, height } = frames[0];
+    updateOut(
+      `GIF：${frames.length}${cropped ? `/${allFrames.length}` : ''} 帧  |  ${width}x${height}  |  ` +
+      `每帧 ${delay * 10}ms（约 ${gifFpsForDelay(delay).toFixed(1)}fps）  |  ` +
+      (bytes ? `${humanSize(bytes.length)}  |  ` : '') +
+      `时长 ${fmtTime((frames.length * delay) / 100)}` +
+      (cropped ? `  |  区间 ${a + 1}–${b + 1}` : '')
+    );
+  }
+
+  function preparePreview(reset = false) {
+    const previous = reset ? undefined : outsideSource ?? previewIds[frameIndex];
+    const { a, b, full } = curSel();
+    curFrames = windowOf(allFrames);
+    previewIds = full ? activeIds : activeIds.slice(a, b + 1);
+    const index = previous === undefined ? 0 : previewIds.findIndex((src) => src >= previous);
+    frameIndex = index < 0 ? Math.max(0, previewIds.length - 1) : index;
+    previewDelay = gifDelayForFps(curFps());
+    previewLoops = Number(loopSel.value) || 0;
+    result = null;
+    syncFrUI();
+    refreshPreview();
+    frameStrip.refresh();
+    updateFrameOutput(curFrames, previewDelay);
+  }
+
+  function regenerateSelection(reset = false) {
+    const id = ++runId;
+    preparePreview(reset);
+    if (autoExtract && curFrames.length) {
+      encode(id, curFrames);
+    } else {
+      setProgress(null);
+    }
+  }
+
+  function editSelectedFrames(action, sources) {
+    if (busy || savingFrames || !sourceFrames.length || !sources.length) return;
+    setPlaying(false);
+    for (const src of sources) {
+      if (action === 'hide') hiddenFrames.add(src);
+      else if (action === 'restore') hiddenFrames.delete(src);
+      else {
+        hiddenFrames.delete(src);
+        deletedFrames.add(src);
+      }
+    }
+    if (action === 'delete') frameStrip.remove(sources);
+    rebuildAvailableFrames();
+    const verb = { hide: '隐藏', restore: '恢复', delete: '删除' }[action];
+    setStatus(`已${verb}所选帧`);
+    regenerateSelection();
+  }
+
   async function render() {
     if (!mode) return;
     // 手动模式：参数改动只反映到预估，不碰抽帧和编码
@@ -786,6 +954,7 @@ export function initGif({ srcView }) {
       return;
     }
     const id = ++runId;
+    const basis = frameBasisKey();
     updateInfo();
     setProgress('pull', 0);
     let frames;
@@ -805,9 +974,13 @@ export function initGif({ srcView }) {
       return;
     }
     // 抽到的是全部帧，区间只在它们里切一刀交给编码：换区间不重新抽帧，也就不会重新 seek 源文件
-    allFrames = frames;
-    syncFrUI();
-    await encode(id, windowOf(frames));
+    installFrames(frames, basis);
+    preparePreview();
+    if (curFrames.length) await encode(id, curFrames);
+    else {
+      setStatus('没有可生成 GIF 的帧');
+      setProgress(null);
+    }
   }
 
   // ---------- 编码 worker 池 ----------
@@ -844,7 +1017,7 @@ export function initGif({ srcView }) {
     const slots = [];
     for (let i = 0; i < size; i++) {
       try {
-        slots.push({ w: new Worker(WORKER_URL, { type: 'module' }), busy: false });
+        slots.push({ w: new Worker(WORKER_URL, { type: 'module' }), ready: false, busy: false });
       } catch {
         for (const s of slots) s.w.terminate();
         return Promise.resolve('broken');
@@ -867,7 +1040,7 @@ export function initGif({ srcView }) {
         if (settled) return;
         if (id !== runId) return stop('cancelled');
         while (queue.length) {
-          const s = slots.find((x) => !x.busy);
+          const s = slots.find((x) => x.ready && !x.busy);
           if (!s) return;
           const i = queue.shift();
           const f = frames[i];
@@ -876,16 +1049,20 @@ export function initGif({ srcView }) {
           const copy = new Uint8ClampedArray(f.data);
           s.w.postMessage({ type: 'frame', index: i, width: f.width, height: f.height, data: copy }, [copy.buffer]);
         }
-        if (!slots.some((x) => x.busy)) {
+        if (done === total) {
           // chunks 一并交回去：编码参数没变时（改循环次数）可以整批复用，只重拼文件头
           stop({ bytes: gifConcat([header, ...chunks, gifTrailer()]), chunks });
         }
       };
       for (const s of slots) {
         s.w.onmessage = (e) => {
+          if (id !== runId) return stop('cancelled');
           const m = e.data;
+          if (m.type === 'ready') {
+            s.ready = true;
+            return pump();
+          }
           s.busy = false;
-          if (m.type === 'ready') return pump();
           if (m.type === 'error') {
             // 帧本身编不动（数据问题），交回主线程走一遍，让原来的报错文案照常显示；
             // 这不代表 worker 坏了，下次照旧用它
@@ -900,15 +1077,11 @@ export function initGif({ srcView }) {
         s.w.onerror = () => stop('broken');
         s.w.postMessage({ type: 'init', params: p });
       }
-      pump();
     });
   }
 
   async function encode(id, frames) {
-    curFrames = frames;
     // GIF 的尺寸就是单帧尺寸（已按等比缩放），不是整张序列图
-    const tw = frames[0].width;
-    const th = frames[0].height;
     const fps = curFps();
     const opts = {
       delay: gifDelayForFps(fps),
@@ -941,6 +1114,7 @@ export function initGif({ srcView }) {
       }
       setProgress('encode', 0);
       await idle();
+      if (id !== runId) return;
       let err = null;
       // 优先走 worker 池：每帧字节互相独立，几个线程分头算完再按帧号拼起来，字节和单线程一致。
       // 帧太少不值得建线程，或者 worker 建不起来 / 报错，就退回下面的主线程路径。
@@ -997,24 +1171,10 @@ export function initGif({ srcView }) {
         transparent: opts.transparent,
       };
     }
-    result = {
-      bytes,
-      count: frames.length,
-      w: tw,
-      h: th,
-      delay: opts.delay,
-      loops: Number(loopSel.value) || 0,
-    };
+    result = { bytes };
     refreshPreview();
     setProgress(null);
-    // 裁过就把「区间 / 总帧数」一起写出来，否则看着像编码丢了帧
-    const cropped = frames.length !== allFrames.length;
-    updateOut(
-      `GIF：${frames.length}${cropped ? `/${allFrames.length}` : ''} 帧  |  ${tw}x${th}  |  ` +
-        `每帧 ${opts.delay * 10}ms（约 ${gifFpsForDelay(opts.delay).toFixed(1)}fps）  |  ` +
-        `${humanSize(bytes.length)}  |  时长 ${fmtDur((frames.length * opts.delay) / 100)}` +
-        (cropped ? `  |  区间 ${curSel().a + 1}–${curSel().b + 1}` : '')
-    );
+    updateFrameOutput(frames, opts.delay, bytes);
     // 抽帧耗时只在真的抽过这一轮时显示；缓存命中（改帧率降档、往窄里改范围、改循环/颜色等）标明走了缓存
     const pulled =
       mode === 'video'
@@ -1327,6 +1487,8 @@ export function initGif({ srcView }) {
     runId++;
     clearTimeout(debounceId);
     pauseVideo();
+    resetFrameSequence();
+    setProgress(null);
     setStatus('正在载入…');
     await idle();
     sourcePath = entry.path;
@@ -1335,9 +1497,6 @@ export function initGif({ srcView }) {
     cache = null;
     dropSrcCache();
     chunkCache = null;
-    // 换源：帧序列整批换掉，上一个源的区间端点没有意义，退回全区间
-    allFrames = [];
-    frameSel = { a: 0, b: 0, full: true };
     io.setSource(entry.path);
     io.setExport(null);
     frameIndex = 0;
@@ -1379,19 +1538,11 @@ export function initGif({ srcView }) {
     cache = null;
     dropSrcCache();
     chunkCache = null;
-    curFrames = [];
-    allFrames = [];
-    frameSel = { a: 0, b: 0, full: true };
-    syncFrUI();
+    resetFrameSequence();
     sourcePath = null;
     sourceName = '';
     sourceBytes = 0;
     io.clear();
-    result = null;
-    frameCanvas.hidden = true;
-    frameRange.max = '1';
-    frameRange.value = '1';
-    frameLabel.textContent = '-';
     nameIn.value = '';
     srcView.setSelect(null);
     srcView.setImage(null);
@@ -1410,22 +1561,70 @@ export function initGif({ srcView }) {
   }
 
   async function exportTo() {
+    if (busy) return;
+    if (!result && curFrames.length) {
+      const id = ++runId;
+      await encode(id, curFrames);
+      if (id !== runId) return;
+    }
     if (!result) {
       setStatus('还没有生成 GIF', true);
       return;
     }
-    let dir = saveOrigChk.checked && sourcePath ? dirname(sourcePath) : null;
-    dir = await resolveSaveDir(dir);
-    if (isTauri && !dir) return;
-    // 目录里已有同名 GIF 就自动加 _1、_2，别把原来的覆盖掉
-    const name = await uniqueFilename(dir, outName());
-    const saved = await saveBlob(name, result.bytes, dir);
-    setStatus(
-      saved === null
-        ? '已取消'
-        : `已导出：${saved}（${humanSize(result.bytes.length)}）` + (name !== outName() ? `·原名已占用` : '')
-    );
-    io.setExport(dir && saved ? saved : null);
+    const output = result;
+    const wanted = outName();
+    try {
+      const dir = await resolveSaveDir(saveOrigChk.checked && sourcePath ? dirname(sourcePath) : null);
+      if ((isTauri && !dir) || output !== result) return;
+      const name = await uniqueFilename(dir, wanted);
+      if (output !== result) return;
+      const saved = await saveBlob(name, output.bytes, dir);
+      if (output !== result) return;
+      setStatus(
+        saved === null
+          ? '已取消'
+          : `已导出：${saved}（${humanSize(output.bytes.length)}）` + (name !== wanted ? `·原名已占用` : '')
+      );
+      io.setExport(dir && saved ? saved : null);
+    } catch (ex) {
+      if (output === result) setStatus('导出失败：' + (ex?.message ?? ex), true);
+    }
+  }
+
+  async function saveSelectedFrames(sources) {
+    if (!sources.length || busy || savingFrames) return;
+    const frames = sourceFrames;
+    const stem = stemOf(sourceName) || 'animation';
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    savingFrames = true;
+    frameStrip.refreshActions();
+    let written = 0;
+    try {
+      const dir = await resolveSaveDir(saveOrigChk.checked && sourcePath ? dirname(sourcePath) : null);
+      if ((isTauri && !dir) || frames !== sourceFrames) return;
+      for (const src of sources) {
+        const { width, height, data } = frames[src];
+        canvas.width = width;
+        canvas.height = height;
+        ctx.putImageData(new ImageData(data, width, height), 0, 0);
+        const blob = await canvasToBlob(canvas, 'image/png');
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const name = await uniqueFilename(dir, `${stem}_f${src + 1}.png`);
+        if (frames !== sourceFrames) return;
+        const saved = await saveBlob(name, bytes, dir);
+        if (frames !== sourceFrames) return;
+        written++;
+        if (dir && saved) io.setExport(saved);
+      }
+      setStatus(`已保存 ${written} 帧 PNG`);
+    } catch (ex) {
+      if (frames === sourceFrames) setStatus(`已保存 ${written} 帧 · 导出帧失败：${ex?.message ?? ex}`, true);
+    } finally {
+      savingFrames = false;
+      frameStrip.refreshActions();
+      frameStrip.scheduleThumbnails();
+    }
   }
 
   // ---------- 事件 ----------
@@ -1443,7 +1642,6 @@ export function initGif({ srcView }) {
   prevBtn.addEventListener('click', () => stepFrame(-1));
   nextBtn.addEventListener('click', () => stepFrame(1));
   frameRange.addEventListener('input', () => {
-    // 先取值：setPlaying(false) 会走 showFrame，把滑块写回当前帧号
     const i = Number(frameRange.value) - 1;
     setPlaying(false);
     showFrame(i);
