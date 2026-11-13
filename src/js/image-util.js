@@ -64,8 +64,18 @@ export function rotate90CW(img) {
 
 export function canvasToBlob(canvas, type, quality) {
   return new Promise((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('图片编码失败'))), type, quality);
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error('图片编码失败'));
+      else if (blob.type !== type) reject(new Error(`当前浏览器不支持编码 ${type}`));
+      else resolve(blob);
+    }, type, quality);
   });
+}
+
+export function imageOutputStem(entered, original, fallback) {
+  const stem = entered.trim().replace(/\.(png|jpe?g|webp|tga)$/i, '') || original || fallback;
+  const safe = stem.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '') || fallback;
+  return /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(safe) ? `_${safe}` : safe;
 }
 
 export async function encodeCanvas(canvas, ext, quality = 0.92) {

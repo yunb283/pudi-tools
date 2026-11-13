@@ -11,9 +11,9 @@ let img = null;
 self.onmessage = (e) => {
   const m = e.data;
   if (m.type === 'load') {
-    img = m.width && m.height ? { width: m.width, height: m.height, data: new Uint8ClampedArray(m.data) } : null;
+    img = m.width && m.height ? { width: m.width, height: m.height, data: m.data } : null;
     // 载入时顺手算一次原始图的接缝指标，省得主线程再整图走一遍
-    self.postMessage({ type: 'loaded', metrics: img ? seamMetrics(img) : null });
+    self.postMessage({ type: 'loaded', id: m.id, metrics: img && m.kind === 'seamless' ? seamMetrics(img) : null });
     return;
   }
   if (m.type !== 'run') return;

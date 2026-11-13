@@ -1,233 +1,125 @@
-// 贴图转法线页：左侧原图、右侧法线图，参数改动实时重算，导出 PNG / TGA。
-// 算法在 normal.js（已用 numpy 独立实现逐字节交叉核对），这里只管解码、控件和导出；
-// 真正的计算丢给 tex-worker.js，滑块拖动时主线程不阻塞。
-import {
-  pickImages,
-  readEntryBytes,
-  saveBlob,
-  resolveSaveDir,
-  isSupportedName,
-  dirname,
-  stemOf,
-  isTauri,
-  TEXTURE_EXTS,
-} from './platform.js';
-import { canvasToImageData, encodeCanvas } from './image-util.js';
-import { decodeToCanvas, rgbaCanvas, FORMAT_NAME, extOf, humanSize } from './decode.js';
 import { heightToNormal } from './normal.js';
-import { makeTexClient } from './tex-client.js';
 import { equalizeCanvases } from './layout.js';
-import { createIoButtons } from './io-buttons.js';
+import { linkTextureRange, texturePage } from './texture-page.js';
+import { encodeTga } from './tga.js';
 
-const $ = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById('nrm-' + id);
 
 export function initNormal({ srcView, outView }) {
-  const info = $('nrm-info');
-  const outInfo = $('nrm-out-info');
-  const openBtn = $('nrm-open');
-  const clearBtn = $('nrm-clear');
-  const srcSel = $('nrm-source');
-  const invertChk = $('nrm-invert');
-  const blurRange = $('nrm-blur');
-  const blurNum = $('nrm-blur-num');
-  const strengthRange = $('nrm-strength');
-  const strengthNum = $('nrm-strength-num');
-  const convSel = $('nrm-convention');
-  const fmtSel = $('nrm-fmt');
-  const nameIn = $('nrm-name');
-  const saveOrigChk = $('nrm-save-orig');
-  const exportBtn = $('nrm-export');
-  const status = $('nrm-status');
-  const io = createIoButtons($('nrm-io'), setStatus);
+  const outInfo = $('out-info');
+  const lightBtn = $('light');
+  const angle = $('light-angle');
+  const black = $('black');
+  const white = $('white');
+  let levels = { black: 0, white: 255 };
+  let result = null;
+  let sample = null;
+  let lightCanvas = null;
+  let frame = 0;
 
-  // 两个预览窗口保持等大（实现见 layout.js）
-  equalizeCanvases($('page-normal'));
+  equalizeCanvases(document.getElementById('page-normal'));
 
-  let srcCanvas = null;
-  let imgData = null;
-  let sourcePath = null;
-  let sourceName = '';
-  let sourceBytes = 0;
-
-  function setStatus(msg) {
-    status.textContent = msg;
-  }
-
-  function updateInfo() {
-    if (!srcCanvas) {
-      info.textContent = '图像尺寸：-  |  大小：-  |  格式：-';
-      outInfo.textContent = '法线尺寸：-  |  生成耗时：-';
+  function showPreview() {
+    if (!result) {
+      outView.setImage(null);
       return;
     }
-    info.textContent =
-      `图像尺寸：${srcCanvas.width}x${srcCanvas.height}  |  ` +
-      `大小：${humanSize(sourceBytes)}  |  ` +
-      `格式：${FORMAT_NAME[extOf(sourceName)] || '未知'}`;
+    const canvas = result.canvas;
+    if (lightBtn.getAttribute('aria-pressed') === 'false') {
+      outView.setImage(canvas, canvas.width, canvas.height);
+      return;
+    }
+    if (!sample) {
+      const scale = Math.min(1, 512 / Math.max(canvas.width, canvas.height));
+      lightCanvas = document.createElement('canvas');
+      lightCanvas.width = Math.max(1, Math.round(canvas.width * scale));
+      lightCanvas.height = Math.max(1, Math.round(canvas.height * scale));
+      const ctx = lightCanvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(canvas, 0, 0, lightCanvas.width, lightCanvas.height);
+      sample = ctx.getImageData(0, 0, lightCanvas.width, lightCanvas.height);
+    }
+    const ctx = lightCanvas.getContext('2d');
+    const lit = ctx.createImageData(sample.width, sample.height);
+    const radians = Number(angle.value) * Math.PI / 180;
+    const lx = Math.cos(radians) * 0.8;
+    const ly = -Math.sin(radians) * 0.8 * (result.opts.yUp ? 1 : -1);
+    for (let i = 0; i < sample.data.length; i += 4) {
+      const nx = sample.data[i] / 127.5 - 1;
+      const ny = sample.data[i + 1] / 127.5 - 1;
+      const nz = sample.data[i + 2] / 127.5 - 1;
+      const shade = 54 + 196 * Math.max(0, Math.min(1, nx * lx + ny * ly + nz * 0.6));
+      lit.data[i] = shade;
+      lit.data[i + 1] = shade;
+      lit.data[i + 2] = shade;
+      lit.data[i + 3] = sample.data[i + 3];
+    }
+    ctx.putImageData(lit, 0, 0);
+    outView.setImage(lightCanvas, canvas.width, canvas.height);
   }
 
-  function setEnabled(on) {
-    clearBtn.disabled = !on;
-    exportBtn.disabled = !on;
+  function updateLight(active) {
+    lightBtn.classList.toggle('on', active);
+    lightBtn.setAttribute('aria-pressed', String(active));
+    $('light-angle-row').hidden = !active;
+    showPreview();
   }
 
-  function opts() {
-    return {
-      source: srcSel.value,
-      invert: invertChk.checked,
-      blur: Number(blurNum.value) || 0,
-      strength: Number(strengthNum.value) || 1,
-      yUp: convSel.value === 'og',
-    };
-  }
-
-  // 计算在 worker 里跑（见 tex-client.js）：2048 的图一次要 85~230ms，
-  // 放主线程会把滑块拖成一卡一卡的。这里每个 tick 都发请求，结果回来才重画。
-  const client = makeTexClient({
-    kind: 'normal',
-    compute: (o) => ({ data: heightToNormal(imgData, o) }),
-    apply: (r) => {
-      if (!imgData) return;
-      if (!r.ok) {
-        setStatus('生成失败：' + r.message);
-        return;
-      }
-      const c = rgbaCanvas(imgData.width, imgData.height, r.data);
-      outView.setImage(c, c.width, c.height);
-      const ms = r.ms;
-      outInfo.textContent =
-        `法线尺寸：${c.width}x${c.height}  |  生成耗时：${ms < 10 ? ms.toFixed(1) : Math.round(ms)}ms`;
+  const page = texturePage({
+    prefix: 'nrm', kind: 'normal', suffix: '_Normal', srcView,
+    errorLabel: '生成失败',
+    options: () => ({
+      source: $('source').value,
+      invert: $('invert').checked,
+      blur: Number($('blur').value),
+      strength: Number($('strength').value),
+      yUp: $('convention').value === 'og',
+      boundary: $('boundary').value,
+      alpha: $('alpha').value,
+      ...levels,
+    }),
+    compute: (image, options) => ({ data: heightToNormal(image, options) }),
+    async encodeResult(image, ext) {
+      if (ext === 'tga') return encodeTga({ ...image, data: image.data.slice() });
+      const { encodeRgbaPng } = await import('./rgba-png.js');
+      return encodeRgbaPng(image);
+    },
+    onResult(next) {
+      result = next ? { canvas: next.canvas, opts: next.opts } : null;
+      sample = lightCanvas = null;
+      lightBtn.disabled = !next;
+      outInfo.textContent = next
+        ? `法线尺寸：${next.canvas.width}x${next.canvas.height}  |  生成耗时：${next.ms.toFixed(next.ms < 10 ? 1 : 0)}ms`
+        : '法线尺寸：-  |  生成耗时：-';
+      showPreview();
     },
   });
 
-  // 参数改动即时重算；同一帧内的多次拖动只算一次
-  let pending = false;
-  // 尾随定时器而不是 requestAnimationFrame：rAF 在页面不可见时不触发，滑块改动会被静默吞掉
-  function schedule() {
-    if (pending || !imgData) return;
-    pending = true;
-    setTimeout(() => {
-      pending = false;
-      render();
-    }, 0);
-  }
-
-  function render() {
-    if (!imgData) return Promise.resolve();
-    return client.request(opts());
-  }
-
-  async function loadEntry(entry) {
-    if (!isSupportedName(entry.name, TEXTURE_EXTS)) {
-      setStatus('不支持的格式：' + entry.name);
-      return;
-    }
-    setStatus('正在载入…');
-    await new Promise((r) => setTimeout(r, 0));
-    try {
-      const bytes = await readEntryBytes(entry);
-      if (!bytes.length) throw new Error('文件内容为空');
-      sourcePath = entry.path;
-      sourceName = entry.name;
-      sourceBytes = bytes.length;
-      nameIn.value = '';
-      srcCanvas = await decodeToCanvas(entry.name, bytes);
-      srcView.setImage(srcCanvas, srcCanvas.width, srcCanvas.height);
-      imgData = canvasToImageData(srcCanvas);
-      // 图像搬进 worker 只要一次；run 排在 load 后面，消息有序，不用 await
-      client.load(imgData);
-      setEnabled(true);
-      updateInfo();
-      render();
-      io.setSource(entry.path);
-      io.setExport(null);
-      setStatus('已载入：' + entry.name);
-    } catch (ex) {
-      imgData = null;
-      srcCanvas = null;
-      srcView.setImage(null);
-      outView.setImage(null);
-      setEnabled(false);
-      updateInfo();
-      setStatus('载入失败：' + (ex?.message ?? ex));
-    }
-  }
-
-  function clearImage() {
-    if (!srcCanvas) return;
-    client.unload();
-    srcCanvas = null;
-    imgData = null;
-    sourcePath = null;
-    sourceName = '';
-    sourceBytes = 0;
-    io.clear();
-    nameIn.value = '';
-    srcView.setImage(null);
-    outView.setImage(null);
-    setEnabled(false);
-    updateInfo();
-    setStatus('');
-  }
-
-  // 默认文件名 = 原名 + _Normal（手工填的名字已经带后缀就不再叠一次）
-  function outName(ext) {
-    let stem = nameIn.value.trim() || (sourceName ? stemOf(sourceName) : 'texture');
-    if (!/_normal$/i.test(stem)) stem += '_Normal';
-    return `${stem}.${ext}`;
-  }
-
-  async function exportTo() {
-    if (!imgData) return;
-    await render();
-    const ext = fmtSel.value.toLowerCase();
-    const canvas = outView.image?.source || null;
-    if (!canvas) {
-      setStatus('还没有法线图可导出');
-      return;
-    }
-    // 默认导出到原图所在目录；取消勾选则弹目录选择框
-    let dir = saveOrigChk.checked && sourcePath ? dirname(sourcePath) : null;
-    dir = await resolveSaveDir(dir);
-    if (isTauri && !dir) return;
-    setStatus('正在导出…');
-    await new Promise((r) => setTimeout(r, 0));
-    try {
-      const bytes = await encodeCanvas(canvas, ext);
-      const saved = await saveBlob(outName(ext), bytes, dir);
-      if (saved === null) {
-        setStatus('已取消');
-        return;
+  for (const id of ['blur', 'strength']) linkTextureRange($(id), $(id + '-num'), page.schedule);
+  for (const id of ['source', 'invert', 'convention', 'boundary', 'alpha']) $(id).addEventListener('change', page.schedule);
+  for (const field of [black, white]) {
+    function updateLevel() {
+      if (!Number.isFinite(field.valueAsNumber)) return;
+      if (field === black) {
+        levels.black = Math.max(0, Math.min(levels.white - 1, Math.round(field.valueAsNumber)));
+      } else {
+        levels.white = Math.min(255, Math.max(levels.black + 1, Math.round(field.valueAsNumber)));
       }
-      setStatus(`已导出：${saved}（${humanSize(bytes.length)}）`);
-      io.setExport(dir ? saved : null);
-    } catch (ex) {
-      setStatus('导出失败：' + (ex?.message ?? ex));
+      page.schedule();
     }
+    field.addEventListener('input', updateLevel);
+    field.addEventListener('change', () => {
+      updateLevel();
+      field.value = field === black ? levels.black : levels.white;
+    });
   }
-
-  openBtn.addEventListener('click', async () => {
-    const entries = await pickImages(false, TEXTURE_EXTS);
-    if (entries.length) await loadEntry(entries[0]);
+  lightBtn.addEventListener('click', () => updateLight(lightBtn.getAttribute('aria-pressed') === 'false'));
+  angle.addEventListener('input', () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      showPreview();
+    });
   });
-  clearBtn.addEventListener('click', clearImage);
-  exportBtn.addEventListener('click', exportTo);
 
-  // 滑块与数字框双向同步，任一改动都即时重算
-  const link = (range, num) => {
-    range.addEventListener('input', () => {
-      num.value = range.value;
-      schedule();
-    });
-    num.addEventListener('input', () => {
-      const v = Math.min(Number(range.max), Math.max(Number(range.min), Number(num.value)));
-      if (Number.isFinite(v)) range.value = String(v);
-      schedule();
-    });
-    num.addEventListener('change', () => schedule());
-  };
-  link(blurRange, blurNum);
-  link(strengthRange, strengthNum);
-  for (const el of [srcSel, invertChk, convSel]) el.addEventListener('change', schedule);
-
-  return { loadEntry };
+  return page;
 }

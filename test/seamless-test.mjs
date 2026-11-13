@@ -1,7 +1,7 @@
 // 验证无缝化：两条独立证据链
-//   1) 与 test/gen-seamless.py 的 numpy 独立实现逐字节比对（88 组参数）+ 指标数值比对
+//   1) 与 test/gen-seamless.py 的 numpy 独立实现逐字节比对+ 指标数值比对
 //   2) 解析式不变量：带外像素不动、强接缝的色差/梯度比值大幅下降、改动面积随宽度单调、
-//      透明像素保持透明、越界宽度按 manifest 的 rejects 对齐拒绝
+//      透明像素保持透明、奇数尺寸半幅钳位
 // 两份实现各写各的（这边逐像素两层循环，那边 np.roll + 广播），约定以 src/js/seamless.js 顶部为准。
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -164,38 +164,60 @@ for (const c of manifest.cases) {
 }
 
 {
-  // 宽度上限只管被启用的那一轴：16x9 用 0.5 时横带 8+8=16 合法、纵带 5×2>9 非法
-  const mk = (v) => {
-    const d = new Uint8ClampedArray(16 * 9 * 4);
-    for (let i = 0; i < 16 * 9; i++) {
-      d[i * 4] = (i * 11) % 256;
-      d[i * 4 + 3] = v;
-    }
-    return { width: 16, height: 9, data: d };
-  };
-  const img = mk(255);
-  const runs = [];
-  try {
-    makeSeamless(img, { blend: 0.5, dir: 'h' });
-    runs.push('仅横向通过');
-  } catch (e) {
-    bad(`仅横向不该被纵向的宽度上限拦住：${e.message}`);
+  const data = new Uint8ClampedArray(16 * 9 * 4);
+  for (let i = 0; i < 16 * 9; i++) {
+    data[i * 4] = (i * 11) % 256;
+    data[i * 4 + 3] = 255;
   }
-  for (const dir of ['v', 'both']) {
-    try {
-      makeSeamless(img, { blend: 0.5, dir });
-      bad(`本应拒绝：${dir} 的纵带 5x2 超过图高 9`);
-    } catch (e) {
-      runs.push(`${dir} 已拒绝`);
-    }
-  }
-  // 宽度 0 时任何方向都等于原图
-  let zeroOk = true;
+  const img = { width: 16, height: 9, data };
   for (const dir of ['h', 'v', 'both']) {
-    const out = makeSeamless(img, { blend: 0, dir });
-    for (let i = 0; i < out.length; i++) if (out[i] !== img.data[i]) zeroOk = false;
+    const half = makeSeamless(img, { blend: 0.5, dir });
+    const near = makeSeamless(img, { blend: 0.49, dir });
+    if (!half.every((value, i) => value === near[i])) bad(`16x9 ${dir} 的 50% 没有钳位到半边长`);
+    const zero = makeSeamless(img, { blend: 0, dir });
+    if (!zero.every((value, i) => value === data[i])) bad(`16x9 ${dir} 的 0% 不等于原图`);
   }
-  zeroOk ? good(`宽度上限只算启用的那一轴：${runs.join('，')}；宽度 0 三种方向都等于原图`) : bad('宽度 0 + dir 不等于原图');
+  good('奇数尺寸 50% 在三个方向都按半边长融合');
+
+  const odd = manifest.cases.find((c) => c.file === 's_odd');
+  const oddImage = { width: odd.w, height: odd.h, data: await load(odd.input) };
+  for (const run of odd.runs.filter((r) => r.args.pct === 0.49)) {
+    const options = toOpts(run.args);
+    const half = makeSeamless(oddImage, { ...options, blend: 0.5 });
+    const near = makeSeamless(oddImage, options);
+    if (!half.every((value, i) => value === near[i])) bad(`奇数尺寸 50% 钳位失败：${JSON.stringify(options)}`);
+  }
+}
+
+{
+  const data = Uint8ClampedArray.of(200, 200, 200, 255, 200, 200, 200, 64,
+                                     200, 200, 200, 255, 200, 200, 200, 64);
+  const m = seamMetrics({ width: 2, height: 2, data });
+  if (m.lr || m.tb || m.ratio || m.lrAlpha !== 191 || m.tbAlpha || m.edges.alphaLR[1] !== 191) {
+    bad('纯透明度接缝应单独计入透明度差，纯色的色差比值为 0');
+  } else {
+    good('纯透明度接缝与颜色接缝分别统计');
+  }
+}
+
+{
+  const data = new Uint8ClampedArray(8 * 8 * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = 30 * ((i / 4) % 8);
+    data[i + 3] = 255;
+  }
+  const img = { width: 8, height: 8, data };
+  const opts = { blend: 0.5, dir: 'h' };
+  const region = { x0: 0, y0: 0, x1: 0.25, y1: 1 };
+  const full = makeSeamless(img, opts);
+  const protectedPixels = makeSeamless(img, { ...opts, region });
+  const localPixels = makeSeamless(img, { ...opts, region, regionMode: 'inside' });
+  if (full[0] === data[0] || protectedPixels[0] !== data[0] || localPixels[0] !== full[0] ||
+      protectedPixels[28] !== full[28] || localPixels[28] !== data[28]) {
+    bad('选区内外的保护或局部融合不正确');
+  } else {
+    good('选区可保护纹理或限制融合范围');
+  }
 }
 
 {
@@ -359,19 +381,6 @@ for (const c of manifest.cases) {
       );
 }
 
-// ---------- 3. 越界宽度按 manifest 的 rejects 对齐 ----------
-for (const c of manifest.cases) {
-  for (const r of c.rejects || []) {
-    const data = await load(c.input);
-    try {
-      makeSeamless({ width: c.w, height: c.h, data }, toOpts(r.args));
-      bad(`本应拒绝：${c.file} ${JSON.stringify(r.args)}`);
-    } catch (e) {
-      good(`已拒绝：${c.file} ${JSON.stringify(r.args)} -> ${e.message}`);
-    }
-  }
-}
-
 {
   // 宽度 0 = 完全不处理：输出必须逐字节等于输入（含 s_alpha 的低 alpha 像素，
   // 预乘→直通往返会差好几个值，所以这条能守住「0 档就是原图」）
@@ -420,12 +429,7 @@ for (const c of manifest.cases) {
   } catch (e) {
     good(`已拒绝：空图 -> ${e.message}`);
   }
-  try {
-    makeSeamless({ width: 9, height: 9, data: new Uint8ClampedArray(9 * 9 * 4) }, { blend: 0.5 });
-    bad('本应拒绝：9x9 用 0.5（带宽 5×2>9）');
-  } catch (e) {
-    good(`已拒绝：奇数尺寸半幅 -> ${e.message}`);
-  }
+
 }
 
 // ---------- 4. 素材完整性：自带写入器产出的 TGA/DDS 必须被我们的解码器原样读回 ----------

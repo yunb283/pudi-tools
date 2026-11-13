@@ -2479,7 +2479,7 @@
    "file": "s_odd",
    "w": 41,
    "h": 29,
-   "note": "奇数尺寸 41x29 随机噪声：half=len>>1 的取整，0.5 档必须被拒绝",
+   "note": "奇数尺寸 41x29 随机噪声：0.5 档与 0.49 使用同一带宽",
    "input": "s_odd.in.bin",
    "runs": [
     {
@@ -2939,89 +2939,7 @@
     "edge": 174.56993077861898,
     "grad": 169.58909260496168,
     "ratio": 1.0293700384685682
-   },
-   "rejects": [
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": true,
-      "levels": 0
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": false,
-      "levels": 0
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": true,
-      "levels": 1
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": false,
-      "levels": 1
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": true,
-      "levels": 2
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": false,
-      "levels": 2
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": true,
-      "levels": 3
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": false,
-      "levels": 3
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": true,
-      "levels": 4
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    },
-    {
-     "args": {
-      "pct": 0.5,
-      "keep_alpha": false,
-      "levels": 4
-     },
-     "why": "融合宽度太大：横向 21x2>41 或纵向 15x2>29"
-    }
-   ]
+   }
   },
   {
    "file": "s_big",

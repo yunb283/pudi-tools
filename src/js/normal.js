@@ -3,11 +3,11 @@
 //   1. 高度取自 8 位 RGBA：lum=0.299R+0.587G+0.114B、avg=(R+G+B)/3、或单通道 r/g/b/a，再除以 255
 //   2. 反转在取值之后做（h = 1 - h），模糊与梯度都是线性算子，所以先后顺序不影响结果
 //   3. 模糊用可分离框形滤波（box blur），窗口 2r+1，横竖各一趟；r=0 表示跳过
-//   4. 梯度用 3x3 Sobel，越界按 clamp（复制最近的边缘像素）：gx=∂h/∂x 向右为正，gy=∂h/∂row 向下为正
+//   4. 梯度用 3x3 Sobel，gx=∂h/∂x 向右为正，gy=∂h/∂row 向下为正
 //   5. 法向 n = normalize(-S·gx, ±S·gy, 1)，S 为强度。OpenGL(Unity) 取 +gy —— 图像里凸起的顶边偏绿
 //      （绿色通道朝上）；DirectX(UE) 取 -gy —— 等于把绿通道镜像
-//   6. 编码 c = floor((v/2 + 1/2)·255 + 0.5)（round-half-up，与 numpy 侧同一口径）；alpha 恒 255（法线贴图不透明）
-//   7. 边缘模式只有 clamp：非平铺贴图不会在接缝处出现环绕伪影；无缝平铺（wrap）暂不在本版
+//   6. 编码 c = floor((v/2 + 1/2)·255 + 0.5)，默认输出不透明
+//   7. 模糊和 Sobel 都默认复制边缘，平铺模式在两个轴上环绕采样
 export const NORMAL_SOURCES = ['lum', 'avg', 'r', 'g', 'b', 'a'];
 
 export function heightToNormal(img, opts = {}) {
@@ -21,6 +21,11 @@ export function heightToNormal(img, opts = {}) {
   const strength = opts.strength ?? 1;
   if (!(strength > 0) || !Number.isFinite(strength)) throw new Error(`强度必须是正有限数：${strength}`);
   const yUp = opts.yUp ?? true;
+  const wrap = opts.boundary === 'wrap';
+  const alpha = opts.alpha ?? 'opaque';
+  const black = opts.black ?? 0;
+  const white = opts.white ?? 255;
+  if (!(black >= 0 && white <= 255 && black < white)) throw new Error('高度范围的黑点必须小于白点');
   const n = w * h;
   if (!n) throw new Error('图像为空');
 
@@ -47,19 +52,20 @@ export function heightToNormal(img, opts = {}) {
         v = data[p + 3];
         break;
     }
-    v /= 255;
-    hs[i] = opts.invert ? 1 - v : v;
+    v = black === 0 && white === 255 ? v / 255 : Math.min(1, Math.max(0, (v - black) / (white - black)));
+    if (opts.invert) v = 1 - v;
+    hs[i] = alpha === 'mask' && source !== 'a' ? v * (data[p + 3] / 255) : v;
   }
-  const hh = blur > 0 ? boxBlur(hs, w, h, blur) : hs;
+  const hh = blur > 0 ? boxBlur(hs, w, h, blur, wrap) : hs;
 
   const out = new Uint8ClampedArray(n * 4);
   for (let y = 0; y < h; y++) {
-    const ym = (y > 0 ? y - 1 : 0) * w;
+    const ym = (y > 0 ? y - 1 : wrap ? h - 1 : 0) * w;
     const yc = y * w;
-    const yp = (y < h - 1 ? y + 1 : h - 1) * w;
+    const yp = (y < h - 1 ? y + 1 : wrap ? 0 : h - 1) * w;
     for (let x = 0; x < w; x++) {
-      const xm = x > 0 ? x - 1 : 0;
-      const xp = x < w - 1 ? x + 1 : w - 1;
+      const xm = x > 0 ? x - 1 : wrap ? w - 1 : 0;
+      const xp = x < w - 1 ? x + 1 : wrap ? 0 : w - 1;
       const gx = (hh[ym + xp] + 2 * hh[yc + xp] + hh[yp + xp] -
         (hh[ym + xm] + 2 * hh[yc + xm] + hh[yp + xm])) * strength;
       const gy = (hh[yp + xm] + 2 * hh[yp + x] + hh[yp + xp] -
@@ -71,7 +77,7 @@ export function heightToNormal(img, opts = {}) {
       out[p] = encode8(nx / len);
       out[p + 1] = encode8(ny / len);
       out[p + 2] = encode8(1 / len);
-      out[p + 3] = 255;
+      out[p + 3] = alpha === 'opaque' ? 255 : data[p + 3];
     }
   }
   return out;
@@ -83,12 +89,15 @@ function encode8(v) {
 }
 
 // 横竖两趟框形模糊，越界按 clamp；滑动窗口在窄/矮图上退化为反复取边缘像素，与 numpy 的 pad+mean 一致
-function boxBlur(src, w, h, r) {
+function boxBlur(src, w, h, r, wrap) {
   const size = 2 * r + 1;
   const tmp = new Float64Array(w * h);
   const dst = new Float64Array(w * h);
-  const cx = (x) => (x < 0 ? 0 : x >= w ? w - 1 : x);
-  const cy = (y) => (y < 0 ? 0 : y >= h ? h - 1 : y);
+  const index = (n) => wrap
+    ? (i) => ((i % n) + n) % n
+    : (i) => Math.min(n - 1, Math.max(0, i));
+  const cx = index(w);
+  const cy = index(h);
   for (let y = 0; y < h; y++) {
     const row = y * w;
     let sum = 0;

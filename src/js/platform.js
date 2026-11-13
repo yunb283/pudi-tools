@@ -347,7 +347,7 @@ export async function makeDir(path) {
 }
 
 // dir 为 null 且不在 Tauri 时退化为浏览器下载；Tauri 下返回 null 表示取消
-export async function saveBlob(filename, bytes, dir) {
+export async function saveBlob(filename, bytes, dir, { unique = false } = {}) {
   if (isTauri) {
     if (!dir) return null;
     const sep = dir.includes('\\') ? '\\' : '/';
@@ -358,6 +358,7 @@ export async function saveBlob(filename, bytes, dir) {
     new DataView(buf.buffer).setUint32(0, pathBytes.length, true);
     buf.set(pathBytes, 4);
     buf.set(bytes, 4 + pathBytes.length);
+    if (unique) return window.__TAURI__.core.invoke('write_new_file', buf);
     await window.__TAURI__.core.invoke('write_file', buf);
     return path;
   }

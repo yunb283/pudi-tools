@@ -2,7 +2,7 @@
 """用 numpy 独立实现「周期偏移 + 渐变交叉溶解」，产出逐字节期望值给 test/seamless-test.mjs。
 
 与 src/js/seamless.js 是两份各写各的代码（那边逐像素两层循环，这边 np.roll + 广播），
-约定以 seamless.js 顶部注释为准：band=floor(len·pct+0.5)、smoothstep 权重、
+约定以 seamless.js 顶部注释为准：band=min(len//2, floor(len·pct+0.5))、smoothstep 权重、
 横向一趟纵向一趟、每趟量化回 8 位、默认在预乘空间混合。
 同时把一份输入存成 png/bmp/jpg/webp/tga/dds，供浏览器端走完整管线再比对。
 """
@@ -31,10 +31,6 @@ def weights(n, band):
     p = 1.0 - edge[inside] / band
     u[inside] = p * p * (3.0 - 2.0 * p)
     return u
-
-
-class SeamTooWide(ValueError):
-    """融合带宽超过图幅一半——与 JS 侧的同名校验一一对应，只有它算「预期拒绝」"""
 
 
 def box1d(a, r, axis):
@@ -81,10 +77,8 @@ def to_seamless(rgba, pct=0.0, keep_alpha=True, levels=0):
     h, w = a.shape[:2]
     pct = min(0.5, max(0.0, float(pct)))
     levels = int(levels)
-    band_w = int(np.floor(w * pct + 0.5))
-    band_h = int(np.floor(h * pct + 0.5))
-    if band_w * 2 > w or band_h * 2 > h:
-        raise SeamTooWide(f"融合宽度太大：横向 {band_w}x2>{w} 或纵向 {band_h}x2>{h}")
+    band_w = min(w // 2, int(np.floor(w * pct + 0.5)))
+    band_h = min(h // 2, int(np.floor(h * pct + 0.5)))
     if band_w == 0 and band_h == 0:
         return a.copy()  # 0 档 = 完全不处理，必须逐字节等于输入
     if keep_alpha:
@@ -119,7 +113,7 @@ def metrics(rgba):
     grad = float(np.concatenate([gx.ravel(), gy.ravel()]).mean())
     edge = (float(lr) + float(tb)) / 2.0
     return {"lr": float(lr), "tb": float(tb), "edge": edge, "grad": grad,
-            "ratio": edge / grad if grad > 0 else float("inf")}
+            "ratio": edge / grad if grad > 0 else 0.0}
 
 
 cases = []
@@ -138,11 +132,7 @@ def add(name, note, rgba, blends=None, levels=None):
 def run(name, **kw):
     c = [x for x in cases if x["file"] == name][0]
     rgba = np.fromfile(os.path.join(OUT, c["input"]), dtype=np.uint8).reshape(c["h"], c["w"], 4)
-    try:
-        exp = to_seamless(rgba, **kw)
-    except SeamTooWide as e:
-        c.setdefault("rejects", []).append({"args": kw, "why": str(e)})
-        return
+    exp = to_seamless(rgba, **kw)
     f = f"{name}.run{len(c['runs']):02d}.bin"
     exp.tofile(os.path.join(OUT, f))
     c["runs"].append({"args": kw, "expect": f, "metrics": metrics(exp)})
@@ -212,8 +202,8 @@ add("s_ramp", "横向斜坡：只有环绕边突变，解析可验证", ramp(64,
 add("s_crop", "周期场裁块：真实贴图形状（中心连续、四边有缝）", periodic_crop(64, 48, 20261022))
 add("s_brick", "砖墙：强结构，融合宽度越大越糊", brick(64, 48))
 add("s_alpha", "软边圆形：透明像素与预乘混合", with_alpha)
-add("s_odd", "奇数尺寸 41x29 随机噪声：half=len>>1 的取整，0.5 档必须被拒绝", noise_odd,
-    [0, 0.15, 0.49, 0.5])
+add("s_odd", "奇数尺寸 41x29 随机噪声：0.5 档与 0.49 使用同一带宽", noise_odd,
+    [0, 0.15, 0.49])
 # 大图只跑几档，给浏览器端做耗时与导出比对用
 add("s_big", "1024x768 周期场裁块：性能与导出用例", periodic_crop(1024, 768, 4242),
     [0, 0.15], [0, 1, 2, 3])
@@ -251,5 +241,4 @@ names = made
 with open(os.path.join(OUT, "manifest.json"), "w", encoding="utf-8") as f:
     json.dump({"cases": cases}, f, ensure_ascii=False, indent=1)
 n = sum(len(c["runs"]) for c in cases)
-rej = sum(len(c.get("rejects", [])) for c in cases)
-print(f"素材 {len(cases)} 个，参数组合 {n} 组，越界拒绝 {rej} 条，图片格式 {len(names)} 种 -> {OUT}")
+print(f"素材 {len(cases)} 个，参数组合 {n} 组，图片格式 {len(names)} 种 -> {OUT}")

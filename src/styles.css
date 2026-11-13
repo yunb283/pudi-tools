@@ -1462,6 +1462,37 @@ select:focus {
   width: 62px;
 }
 
+.texture-dimensions input[type="number"] {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.texture-tools {
+  flex-wrap: wrap;
+}
+
+#nrm-light-angle-row {
+  flex: 1 1 200px;
+}
+
+#nrm-light-angle-row span {
+  white-space: nowrap;
+}
+
+#sml-metric {
+  white-space: pre-line;
+}
+
+#page-seamless #sml-protect-hint,
+#page-seamless #sml-heat-hint {
+  margin-top: 0;
+}
+
+#conv-matte {
+  width: 56px;
+  height: 29px;
+}
+
 /* 帧率滑条的读数位数会变,定宽否则拖动手柄会跟着跳 */
 #gif-fps-label {
   min-width: 22px;
@@ -2539,6 +2570,18 @@ select:disabled {
   margin-right: 6px;
   font-weight: 600;
 }
+
+.batch-file-detail {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-9a5);
+}
+
+.batch-file-row[data-status="fail"] .batch-file-detail {
+  color: var(--red-text);
+}
 .status-tag.tag-queue {
   background: var(--bg-track);
   color: var(--muted-9a5);
@@ -3490,6 +3533,19 @@ html.fc-fullscreen .page {
 
 #page-flowmap .fm-stage.panning {
   cursor: grabbing;
+}
+
+#fm-tool-row {
+  flex-wrap: wrap;
+}
+
+#fm-tool-row .btn {
+  min-width: max-content;
+  padding-inline: 7px;
+}
+
+#fm-selection-actions .btn {
+  padding: 4px 7px;
 }
 
 #page-flowmap .fm-preview-wrap {

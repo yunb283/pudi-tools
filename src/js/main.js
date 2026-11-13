@@ -154,7 +154,11 @@ const nrmOutView = new CanvasView(document.getElementById('nrm-out-canvas'), {
   bgMode: 2,
   zoomable: true,
 });
-const smlSrcView = new CanvasView(document.getElementById('sml-src-canvas'), { bgMode: 2 });
+const smlSrcView = new CanvasView(document.getElementById('sml-src-canvas'), {
+  bgMode: 2,
+  selectable: true,
+  zoomable: true,
+});
 const smlOutView = new CanvasView(document.getElementById('sml-out-canvas'), {
   bgMode: 2,
   zoomable: true,

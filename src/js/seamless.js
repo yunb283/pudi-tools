@@ -8,7 +8,7 @@
 //      这与文档里的「先 roll 半图把缝挪到中心 → 修中心十字缝 → 再 roll 回去」完全等价，少两次搬运。
 //   2. u 用 smoothstep：p = 1 - 到最近边缘的距离 / 带宽，u = p·p·(3-2p)。d=0 处 u=1、
 //      距离 >= 带宽处 u=0 且两端导数为 0，带外侧不会被拖出第二道缝。
-//      带宽 B = round(边长 × 比例)，比例 0..0.5（界面与函数的默认都是 0 = 不处理），要求 2B <= 边长。
+//      带宽 B = round(边长 × 比例)，上限为向下取整的半边长。
 //      比例 0（或小到 round 出 0）就是完全不处理，直接原样返回，等于 2x2 预览里看原图的接缝。
 //   3. 先横向一趟、再纵向一趟，两趟都只用上一趟的结果；四个角被两趟各覆盖一次。
 //      dir 可以只做其中一趟：'h' 只横、'v' 只纵、默认 'both'。不做的那一趟带宽记 0，
@@ -26,6 +26,10 @@
 //      把低频改用展宽后的权重混合、高频仍用窄权重，就既不留缝又不糊。
 //      wide = box(u, r)，out = [(1-wide)·lo(a) + wide·lo(b)] + [(1-u)·hi(a) + u·hi(b)]；
 //      u 与 wide 相同时恒等于单尺度，所以 levels=0 与旧结果逐字节一致。
+export function seamBand(length, fraction) {
+  return Math.min(Math.floor(length / 2), Math.round(length * fraction));
+}
+
 export function makeSeamless(img, opts = {}) {
   const w = img.width;
   const h = img.height;
@@ -36,20 +40,48 @@ export function makeSeamless(img, opts = {}) {
   const levels = Math.min(4, Math.max(0, Math.floor(opts.levels ?? 0)));
   // 融合方向：'both'（默认，横一趟再纵一趟）/ 'h' 只做横向 / 'v' 只做纵向
   const dir = opts.dir === 'h' || opts.dir === 'v' ? opts.dir : 'both';
-  const bw = dir === 'v' ? 0 : Math.round(w * pct);
-  const bh = dir === 'h' ? 0 : Math.round(h * pct);
-  if (bw * 2 > w) throw new Error(`融合宽度太大：横向带 ${bw}x2 超过图宽 ${w}`);
-  if (bh * 2 > h) throw new Error(`融合宽度太大：纵向带 ${bh}x2 超过图高 ${h}`);
+  const bw = dir === 'v' ? 0 : seamBand(w, pct);
+  const bh = dir === 'h' ? 0 : seamBand(h, pct);
 
   const src = img.data;
   // 宽度 0 = 完全不处理。这里必须直接原样返回：预乘→直通的往返在低 alpha 处会差好几个值，
   // 那样「0 档等于原图」就不成立了
   if (bw === 0 && bh === 0) return Uint8ClampedArray.from(src);
   let a = keepAlpha ? toPremul8(src) : Uint8ClampedArray.from(src);
-  let b = new Uint8ClampedArray(a.length);
+  const b = new Uint8ClampedArray(a.length);
   blendAxis(a, b, w, h, bw, true, levels);
   blendAxis(b, a, w, h, bh, false, levels);
-  return keepAlpha ? unPremul8(a) : a;
+  const result = keepAlpha ? unPremul8(a) : a;
+  if (!opts.region) return result;
+  if (opts.regionMode === 'inside') {
+    const local = Uint8ClampedArray.from(src);
+    blendRegion(result, local, w, h, opts.region, keepAlpha);
+    return local;
+  }
+  blendRegion(src, result, w, h, opts.region, keepAlpha);
+  return result;
+}
+
+function blendRegion(src, out, w, h, { x0, y0, x1, y1 }, premul) {
+  if (!(x0 < x1 && y0 < y1)) return;
+  const left = Math.max(0, Math.floor(x0 * w));
+  const right = Math.min(w, Math.ceil(x1 * w));
+  const top = Math.max(0, Math.floor(y0 * h));
+  const bottom = Math.min(h, Math.ceil(y1 * h));
+  const feather = Math.min(16, Math.floor(Math.min(right - left, bottom - top) / 4));
+  for (let y = top; y < bottom; y++) {
+    for (let x = left; x < right; x++) {
+      const p = (y * w + x) * 4;
+      const distance = Math.min(x - left, right - 1 - x, y - top, bottom - 1 - y);
+      const t = feather ? Math.min(1, (distance + 1) / (feather + 1)) : 1;
+      const weight = t * t * (3 - 2 * t);
+      const alpha = out[p + 3] * (1 - weight) + src[p + 3] * weight;
+      const oldWeight = premul && alpha ? (1 - weight) * out[p + 3] / alpha : 1 - weight;
+      const srcWeight = premul && alpha ? weight * src[p + 3] / alpha : weight;
+      for (let c = 0; c < 3; c++) out[p + c] = out[p + c] * oldWeight + src[p + c] * srcWeight;
+      out[p + 3] = alpha;
+    }
+  }
 }
 
 // 沿一个轴的那一趟：levels=0 就是单尺度 (1-u)·自身 + u·半图平移；
@@ -185,10 +217,31 @@ export function seamMetrics(img) {
     const c = d[i + 2] - d[j + 2];
     return Math.sqrt(a * a + b * b + c * c);
   };
-  let lr = 0;
-  for (let y = 0; y < h; y++) lr += dist(y * w * 4, (y * w + w - 1) * 4);
-  let tb = 0;
-  for (let x = 0; x < w; x++) tb += dist(x * 4, ((h - 1) * w + x) * 4);
+  const colorLR = new Float32Array(h);
+  const colorTB = new Float32Array(w);
+  const alphaLR = new Uint8Array(h);
+  const alphaTB = new Uint8Array(w);
+  let lr = 0, tb = 0, lrAlpha = 0, tbAlpha = 0;
+  for (let y = 0; y < h; y++) {
+    const l = y * w * 4;
+    const r = (y * w + w - 1) * 4;
+    const color = dist(l, r);
+    const alpha = Math.abs(d[l + 3] - d[r + 3]);
+    colorLR[y] = color;
+    alphaLR[y] = alpha;
+    lr += color;
+    lrAlpha += alpha;
+  }
+  for (let x = 0; x < w; x++) {
+    const t = x * 4;
+    const b = ((h - 1) * w + x) * 4;
+    const color = dist(t, b);
+    const alpha = Math.abs(d[t + 3] - d[b + 3]);
+    colorTB[x] = color;
+    alphaTB[x] = alpha;
+    tb += color;
+    tbAlpha += alpha;
+  }
   let inner = 0;
   let cnt = 0;
   for (let y = 0; y < h; y++) {
@@ -207,7 +260,11 @@ export function seamMetrics(img) {
   }
   const lrAvg = lr / h;
   const tbAvg = tb / w;
-  const grad = inner / cnt;
+  const grad = cnt ? inner / cnt : 0;
   const edge = (lrAvg + tbAvg) / 2;
-  return { lr: lrAvg, tb: tbAvg, edge, grad, ratio: grad > 0 ? edge / grad : Infinity };
+  return {
+    lr: lrAvg, tb: tbAvg, lrAlpha: lrAlpha / h, tbAlpha: tbAlpha / w, edge, grad,
+    ratio: grad ? edge / grad : edge ? Infinity : 0,
+    edges: { colorLR, colorTB, alphaLR, alphaTB },
+  };
 }

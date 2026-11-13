@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -189,6 +189,95 @@ async fn read_file(path: String) -> Result<tauri::ipc::Response, String> {
 // 原始字节写入：自定义协议被拦截时载荷会退化成 JSON 数字数组，这里一并接受
 #[tauri::command]
 async fn write_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let payload = file_write_payload(&request)?;
+    let (path, bytes) = file_write_parts(&payload)?;
+    create_parent_dir(path)?;
+    fs::write(path, bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn write_new_file(request: tauri::ipc::Request<'_>) -> Result<PathBuf, String> {
+    let payload = file_write_payload(&request)?;
+    let (path, bytes) = file_write_parts(&payload)?;
+    create_parent_dir(path)?;
+    write_unique(Path::new(path), bytes)
+}
+
+fn write_unique(path: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("文件名无效")?;
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    for index in 0.. {
+        let candidate = if index == 0 {
+            path.to_owned()
+        } else if ext.is_empty() {
+            path.with_file_name(format!("{stem}_{index}"))
+        } else {
+            path.with_file_name(format!("{stem}_{index}.{ext}"))
+        };
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(mut file) => {
+                if let Err(error) = file.write_all(bytes) {
+                    drop(file);
+                    let _ = fs::remove_file(&candidate);
+                    return Err(error.to_string());
+                }
+                return Ok(candidate);
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    unreachable!()
+}
+
+#[cfg(test)]
+mod image_export_tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_exports_preserve_existing_files() {
+        let dir = std::env::temp_dir().join(format!("pudi-image-export-{}", std::process::id()));
+        fs::create_dir(&dir).unwrap();
+        let path = dir.join("测试.png");
+        fs::write(&path, [255]).unwrap();
+        let outputs = std::thread::scope(|scope| {
+            let jobs: Vec<_> = (0..8u8)
+                .map(|value| {
+                    let path = &path;
+                    scope.spawn(move || (value, write_unique(path, &[value]).unwrap()))
+                })
+                .collect();
+            jobs.into_iter().map(|job| job.join().unwrap()).collect::<Vec<_>>()
+        });
+        assert_eq!(fs::read(&path).unwrap(), [255]);
+        assert_eq!(
+            outputs
+                .iter()
+                .map(|(_, p)| p)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            8
+        );
+        for (value, saved) in outputs {
+            assert_eq!(fs::read(&saved).unwrap(), [value]);
+            fs::remove_file(saved).unwrap();
+        }
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(dir).unwrap();
+    }
+}
+
+fn file_write_payload<'a>(request: &'a tauri::ipc::Request<'_>) -> Result<Cow<'a, [u8]>, String> {
     let payload = match request.body() {
         tauri::ipc::InvokeBody::Raw(b) => Cow::Borrowed(b.as_slice()),
         tauri::ipc::InvokeBody::Json(serde_json::Value::Array(values)) => {
@@ -204,6 +293,10 @@ async fn write_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
         }
         _ => return Err("write_file 需要二进制载荷".into()),
     };
+    Ok(payload)
+}
+
+fn file_write_parts(payload: &[u8]) -> Result<(&str, &[u8]), String> {
     // 原始请求体带不了 JSON 参数，路径写在载荷头部：[u32 小端 路径长度][路径 utf8][文件字节]
     let head: [u8; 4] = payload
         .get(..4)
@@ -216,13 +309,17 @@ async fn write_file(request: tauri::ipc::Request<'_>) -> Result<(), String> {
         .and_then(|tail| tail.split_at_checked(path_len))
         .ok_or("载荷格式不正确")?;
     let path = std::str::from_utf8(path_bytes).map_err(|_| "路径编码错误")?;
+    Ok((path, bytes))
+}
 
-    if let Some(parent) = PathBuf::from(path).parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
+fn create_parent_dir(path: &str) -> Result<(), String> {
+    if let Some(parent) = Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::write(path, bytes).map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// 像素预算上限：RGBA8 每像素 4 字节，6000 万像素约 240MB，再大直接拒绝。
@@ -2218,6 +2315,7 @@ pub fn run() {
             pick_dir,
             read_file,
             write_file,
+            write_new_file,
             decode_heif,
             file_size,
             list_files,

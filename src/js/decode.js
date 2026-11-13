@@ -39,7 +39,8 @@ export function rgbaCanvas(w, h, data) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
-  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data), w, h), 0, 0);
+  const pixels = data instanceof Uint8ClampedArray ? data : new Uint8ClampedArray(data);
+  c.getContext('2d').putImageData(new ImageData(pixels, w, h), 0, 0);
   return c;
 }
 

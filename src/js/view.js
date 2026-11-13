@@ -68,7 +68,13 @@ export class CanvasView {
             s0: Math.min(cw / (this.image.w * this.tile), ch / (this.image.h * this.tile)),
           };
         },
-        () => this.redraw()
+        (state) => {
+          this.redraw();
+          if (this._navigationPeer?._zp) {
+            Object.assign(this._navigationPeer._zp.state, state);
+            this._navigationPeer.redraw();
+          }
+        }
       );
       canvas.classList.add('zoomable');
     }
@@ -165,6 +171,11 @@ export class CanvasView {
   // 同一颗左键不能既拖图又框选：进裁剪模式时把平移让出去
   setPanEnabled(on) {
     if (this._zp) this._zp.setPanEnabled(on);
+  }
+
+  syncNavigation(peer) {
+    this._navigationPeer = peer;
+    peer._navigationPeer = this;
   }
 
   targetRect() {
