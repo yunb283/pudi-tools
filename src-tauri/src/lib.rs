@@ -16,6 +16,7 @@ use tauri_plugin_dialog::{DialogExt, FilePath};
 use std::os::windows::process::CommandExt;
 
 mod system;
+mod word;
 
 /// Windows 的 CREATE_NO_WINDOW：启动控制台子进程时不要新建控制台窗口。
 #[cfg(windows)]
@@ -2316,6 +2317,7 @@ pub fn run() {
             read_file,
             write_file,
             write_new_file,
+            word::convert_word_to_pdf,
             decode_heif,
             file_size,
             list_files,

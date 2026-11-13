@@ -364,6 +364,7 @@
       <button class="tab" id="tab-audio">音频格式转换</button>
       <button class="tab" id="tab-dl">视频下载</button>
       <button class="tab" id="tab-pdf">PDF转图片</button>
+      <button class="tab" id="tab-word">Word转图片</button>
       <button class="tab" id="tab-clock">翻页时钟</button>
       <button class="tab" id="tab-rename">批量重命名</button>
       <button class="tab" id="tab-sysinfo">电脑配置</button>
@@ -1908,7 +1909,7 @@
       </div>
     </div>
 
-    <div class="page hidden" id="page-pdf">
+    <div class="page hidden document-page" id="page-pdf">
       <!-- 左：PDF 预览 + 翻页 -->
       <div class="panel" style="flex: 2 1 0; min-width: 0">
         <div class="panel-head">
@@ -2011,6 +2012,113 @@
         <div class="help-label">
           导出默认落在 PDF 所在文件夹里一个与 PDF 同名的新文件夹中，图片按页码命名（文档_001.png、文档_002.png…）。<br />
           默认输出 300 DPI、无损 PNG，适合直接拿去印刷；JPEG 可另调品质。
+        </div>
+      </div>
+    </div>
+
+    <div class="page hidden document-page" id="page-word">
+      <!-- 左：Word 预览 + 翻页 -->
+      <div class="panel" style="flex: 2 1 0; min-width: 0">
+        <div class="panel-head">
+          <span class="panel-title">Word 预览</span>
+          <span class="dim-label pdf-file-name" id="word-file-name">未载入 Word</span>
+          <select id="word-zoom" class="pdf-zoom" title="预览缩放">
+            <option value="fit">适应窗口</option>
+            <option value="1">原始尺寸</option>
+            <option value="2">两倍</option>
+          </select>
+        </div>
+        <div class="canvas-wrap pdf-prev-wrap" id="word-prev-wrap">
+          <canvas id="word-canvas" hidden></canvas>
+          <span class="dim-label pdf-empty" id="word-empty"
+            >打开 Word 文档，这里显示页面预览</span
+          >
+        </div>
+        <div class="pdf-pager">
+          <button class="btn small" id="word-prev" type="button">上一页</button>
+          <span class="pdf-page-box">
+            <input
+              type="number"
+              id="word-page-input"
+              min="1"
+              max="1"
+              value="1"
+              title="输入页码后回车或点「跳转」"
+            />
+            <button class="btn small" id="word-jump" type="button">跳转</button>
+          </span>
+          <span class="dim-label">/ <span id="word-page-total">0</span> 页</span>
+          <button class="btn small" id="word-next" type="button">下一页</button>
+        </div>
+        <div class="status" id="word-status"></div>
+      </div>
+
+      <!-- 右：导出设置 -->
+      <div class="panel" style="flex: 1 1 0; min-width: 240px">
+        <div class="panel-head">
+          <span class="panel-title">导出设置</span>
+        </div>
+        <div class="form-grid">
+          <label for="word-fmt">导出格式</label>
+          <select id="word-fmt">
+            <option value="png">PNG（无损，适合打印）</option>
+            <option value="jpg">JPEG（体积小）</option>
+            <option value="pdf">PDF</option>
+          </select>
+          <label id="word-quality-label" hidden>品质</label>
+          <div class="dual-row" id="word-quality-row" hidden>
+            <input
+              type="range"
+              id="word-quality"
+              min="10"
+              max="100"
+              step="1"
+              value="100"
+            />
+            <span class="dim-label" id="word-quality-num">100</span>
+          </div>
+          <label id="word-dpi-label" for="word-dpi">图片分辨率</label>
+          <select id="word-dpi" title="按 72 DPI 为 1 倍换算，300 DPI 是常见的印刷精度">
+            <option value="1.3333">屏幕 96 DPI</option>
+            <option value="2.0833">高清 150 DPI</option>
+            <option value="4.1667" selected>打印 300 DPI（推荐）</option>
+            <option value="8.3333">超清 600 DPI</option>
+          </select>
+          <label>导出范围</label>
+          <div class="seg-row" id="word-range">
+            <button class="btn on" data-range="all" type="button">全部页</button>
+            <button class="btn" data-range="current" type="button">当前页</button>
+          </div>
+          <label>导出路径</label>
+          <div class="size-row">
+            <input
+              type="text"
+              id="word-dir"
+              readonly
+              placeholder="默认在 Word 同级新建同名文件夹"
+            />
+            <button class="btn small" id="word-browse" type="button">更改…</button>
+          </div>
+        </div>
+        <button class="btn primary" id="word-export" disabled>导出</button>
+        <div class="pdf-dir-row">
+          <button class="btn small" id="word-open-dir" type="button" disabled>
+            打开导出目录
+          </button>
+          <button class="btn small" id="word-open-src" type="button" disabled>
+            打开源文件目录
+          </button>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar">
+            <div class="progress-fill" id="word-progress-fill"></div>
+          </div>
+          <span class="dim-label" id="word-progress-text">0%</span>
+        </div>
+        <button class="btn" id="word-open">打开 Word…（或拖入 DOC / DOCX）</button>
+        <div class="status" id="word-export-status"></div>
+        <div class="help-label">
+          使用本机 Microsoft Word 或 LibreOffice 排版。支持 DOC、DOCX，可导出 PNG、JPEG 或 PDF。
         </div>
       </div>
     </div>

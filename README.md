@@ -29,6 +29,7 @@
 | 音频格式转换 | 单张 / 批量，也能从视频提取音轨；MP3 / WAV / FLAC / AAC / M4A / OGG / Opus，可调比特率、采样率、声道与截取区间 |
 | 视频下载 | 内置 yt-dlp 解析上千个站点，列出可用格式 / 分辨率 / 编码，支持合集批量、进度显示与 yt-dlp 自检更新 |
 | PDF 转图片 | 基于内置 pdf.js 渲染，PNG / JPEG、96 ~ 600 DPI、全部页或当前页，默认导出到 PDF 同级的同名文件夹 |
+| Word 转图片 | DOC / DOCX 分页预览，当前页或全部页导出 PNG / JPEG / PDF。Windows 桌面版调用本机 Microsoft Word，未安装时可用 LibreOffice |
 
 ### 3D 模型
 
@@ -73,7 +74,7 @@ node serve.js              # 默认 http://localhost:8080
 node serve.js 8123         # 指定端口
 ```
 
-浏览器预览模式下，`platform.js` 会自动退回 `<input type="file">`、Blob URL 和浏览器下载。**依赖 Rust 后端的页（视频 / 音频转换、视频下载、电脑配置、自动关机）在此模式下不可用**，导出也会退化为浏览器下载而非写入原目录。
+浏览器预览模式下，`platform.js` 会自动退回 `<input type="file">`、Blob URL 和浏览器下载。**依赖 Rust 后端的页（视频 / 音频转换、视频下载、Word 转图片、电脑配置、自动关机）在此模式下不可用**，导出也会退化为浏览器下载而非写入原目录。
 
 ## 构建与发版
 

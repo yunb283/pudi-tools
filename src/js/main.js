@@ -126,6 +126,8 @@ const pageAudio = document.getElementById('page-audio');
 const pageDl = document.getElementById('page-dl');
 const tabPdf = document.getElementById('tab-pdf');
 const pagePdf = document.getElementById('page-pdf');
+const tabWord = document.getElementById('tab-word');
+const pageWord = document.getElementById('page-word');
 const pageClock = document.getElementById('page-clock');
 const pageRename = document.getElementById('page-rename');
 const pageSysInfo = document.getElementById('page-sysinfo');
@@ -232,6 +234,7 @@ const videoApi = initVideoConvert();
 const audioApi = initAudioConvert();
 const dlApi = initVideoDownload();
 const pdfApi = initPdfPage();
+const wordApi = initPdfPage({ word: true });
 initSysInfo();
 const shutdownApi = initShutdown();
 initFlipClock();
@@ -262,6 +265,7 @@ const tabs = [
   ['audio', tabAudio, pageAudio, []],
   ['dl', tabDl, pageDl, []],
   ['pdf', tabPdf, pagePdf, []],
+  ['word', tabWord, pageWord, []],
   ['clock', tabClock, pageClock, []],
   ['rename', tabRename, pageRename, []],
   ['sysinfo', tabSysInfo, pageSysInfo, []],
@@ -315,6 +319,7 @@ tabVideo.addEventListener('click', () => showTab('video'));
 tabAudio.addEventListener('click', () => showTab('audio'));
 tabDl.addEventListener('click', () => showTab('dl'));
 tabPdf.addEventListener('click', () => showTab('pdf'));
+tabWord.addEventListener('click', () => showTab('word'));
 tabClock.addEventListener('click', () => showTab('clock'));
 tabRename.addEventListener('click', () => showTab('rename'));
 tabSysInfo.addEventListener('click', () => showTab('sysinfo'));
@@ -409,8 +414,12 @@ function tabName(t) {
 function readTabOrder() {
   try {
     const arr = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]');
-    // 只认现在还在的页签名：以后加新工具，它排到最后，不会因为旧记录找不到而错位
-    return Array.isArray(arr) ? arr.filter((n) => tabs.some((t) => t[0] === n)) : [];
+    if (!Array.isArray(arr)) return [];
+    const order = arr.filter((name) => tabs.some((tab) => tab[0] === name));
+    // 首次加入 Word 页时，跟随已有的 PDF 页，保留用户对其他页签的排序。
+    const pdfIndex = order.indexOf('pdf');
+    if (pdfIndex >= 0 && !order.includes('word')) order.splice(pdfIndex + 1, 0, 'word');
+    return order;
   } catch (e) {
     return [];
   }
@@ -979,6 +988,10 @@ themeBtn.addEventListener('click', (ev) => {
 });
 
 onGlobalDrop((entries) => {
+  if (!pageWord.classList.contains('hidden')) {
+    wordApi.addEntries(entries);
+    return;
+  }
   // PDF 转图片页：一次只吃一个 PDF
   if (!pagePdf.classList.contains('hidden')) {
     pdfApi.addEntries(entries);

@@ -2504,15 +2504,14 @@ select:disabled {
   flex-wrap: wrap;
 }
 
-/* PDF 页右栏要能真缩到三分之一宽：表格里的控件不许按内容把面板撑开 */
-#page-pdf .form-grid select,
-#page-pdf .form-grid input,
-#page-pdf .size-row input {
+/* 文档页右栏的控件随面板缩放 */
+.document-page .form-grid select,
+.document-page .form-grid input {
   min-width: 0;
   width: 100%;
 }
 
-#page-pdf .size-row .btn {
+.document-page .size-row .btn {
   flex: 0 0 auto;
 }
 
