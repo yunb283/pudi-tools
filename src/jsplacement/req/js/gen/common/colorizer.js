@@ -12,112 +12,91 @@ function saveColor(savename){
 	});
 }
 
-// Load custom gradients
+// Both preview controls use the bundled gradient palettes.
+var gradientFiles = fs.readdirSync(__dirname + '/Gradients')
+	.filter(file => /\.(jpe?g|png|gif|bmp)$/i.test(file));
+var selectedGradient = null;
 
-var custoloaded;
+function gradientSource(file) {
+	return './Gradients/' + file;
+}
+
 
 function loadGrad(){
-	if(custoloaded){
-		return;
+	var panel = document.getElementById('colorizer');
+	if (!panel) return;
+	var gradients = panel.querySelector('#gradients');
+	if (gradients?.childElementCount) return;
+	if (!gradients) {
+		gradients = document.createElement('span');
+		gradients.id = 'gradients';
+		panel.appendChild(gradients);
 	}
+	for (var file of gradientFiles) {
+		var image = new Image();
+		image.id = file;
+		image.src = gradientSource(file);
+		image.addEventListener('click', function () { theColorizer(this.id); });
+		gradients.appendChild(image);
+	}
+}
 
-	var gradlist = document.getElementById("gradients");
-	if (!gradlist) return;
-	// 生成器页自己已经通过 pages/gradients.html 填过缩略图了，别再重复追加
-	if (gradlist.children.length){ custoloaded = true; return; }
+var colorctx = colorCanvas.getContext('2d');
 
-	var supported = ["jpg","jpeg","png","gif","bmp"];
+function showRandomGradient() {
+	var choices = gradientFiles.filter(file => file !== selectedGradient);
+	if (!choices.length) choices = gradientFiles;
+	if (choices.length) theColorizer(choices[rand(0, choices.length - 1)]);
+}
 
-	gfiles = gfiles.filter(function(file){
-		for(i=0;i<supported.length;i++){
-			if(file.indexOf(supported[i]) !== -1){
-				return true;
+function theColorizer(file){
+	if (!colorCanvas || canvas.getAttribute('generated') !== 'yup') return;
+	schedulePreviewUpdate(async function (_, isCurrent) {
+		var palette = document.getElementById(file);
+		if (!palette?.naturalWidth) {
+			palette = new Image();
+			palette.src = gradientSource(file);
+			try {
+				await palette.decode();
+			} catch {
+				return;
 			}
+			if (!isCurrent()) return;
 		}
+		applyGradient(palette);
+		selectedGradient = file;
+		showHeight(0);
 	});
+}
 
-	for (i = 0; i < gfiles.length; i++){
-		// gfiles 可能是 "Gradients/xxx.png"（WEB_PORT.js）或裸文件名（离线清单），
-		// 统一换算成相对 iframe 文档的路径，站点根路径 "/" 在子目录下会 404
-		var f = gfiles[i];
-		var src = f.indexOf('/') >= 0 ? f : "./Gradients/" + f;
-		var id = f.slice(f.lastIndexOf('/') + 1);
-		gradlist.innerHTML = gradlist.innerHTML + "<img src=\"" + src + "\" id=\"" + id + "\" onclick=\"theColorizer('" + id + "')\" />";
+function applyGradient(palette) {
+	var paletteCanvas = document.createElement('canvas');
+	paletteCanvas.width = 256;
+	paletteCanvas.height = 1;
+	var palettectx = paletteCanvas.getContext('2d');
+	palettectx.drawImage(palette, 0, 0, 256, 1);
+	var colors = palettectx.getImageData(0, 0, 256, 1).data;
+
+	var width = colorCanvas.width;
+	var height = colorCanvas.height;
+	var rowsPerChunk = 256;
+	for (var top = 0; top < height; top += rowsPerChunk) {
+		var rows = Math.min(rowsPerChunk, height - top);
+		var pixels = ctx.getImageData(0, top, width, rows);
+		var data = pixels.data;
+		for (var i = 0; i < data.length; i += 4) {
+			var index = data[i] * 4;
+			data[i] = colors[index];
+			data[i + 1] = colors[index + 1];
+			data[i + 2] = colors[index + 2];
+			data[i + 3] = 255;
+		}
+		colorctx.putImageData(pixels, 0, top);
 	}
-
-	custoloaded = true;
 }
-
-// Colorizer
-var colorCanvas = document.getElementById("dat");
-var colorctx = colorCanvas.getContext("2d");
-
-function theColorizer(gradifile){
-	$("#canover").addClass("visible");
-	setTimeout(function(){
-		var paletteCanvas = document.createElement('canvas');
-		paletteCanvas.width = 256; paletteCanvas.height = 1;
-		var palettectx = paletteCanvas.getContext('2d');
-
-		var paletteimg = document.getElementById(gradifile);
-		palettectx.drawImage(paletteimg,0,0,256,1);
-
-		var heightsource = ctx.getImageData(0,0,res,res);
-		var palettesource = palettectx.getImageData(0,0,256,1);
-
-		var destination = ctx.createImageData(res,res);
-
-		var paletter = [], paletteg=[], paletteb=[];
-
-		for(var i=0; i<=1023; i+=4){
-			paletter.push(palettesource.data[i]);
-			paletteg.push(palettesource.data[i+1]);
-			paletteb.push(palettesource.data[i+2]);
-		}
-
-		for(var i=0, l=res*res*4; i<l; i+=4){
-			destination.data[i] = paletter[heightsource.data[i]];
-			destination.data[i+1] = paletteg[heightsource.data[i]];
-			destination.data[i+2] = paletteb[heightsource.data[i]];
-			destination.data[i+3] = 255;
-		}
-
-		colorctx.clearRect(-res*2, -res*2, res*4, res*4);
-		colorctx.globalCompositeOperation="source-over";
-		colorctx.putImageData(destination,0,0);
-
-		// Overlay
-		// var olay = document.getElementById("overlay001");
-	  //
-		// colorctx.globalCompositeOperation="overlay";
-	  //
-		// var olayx = 0; var olayy = 0;
-		// for(var i=0; i<8; i++){
-		// 	olayx = 0;
-		// 	for(var j=0; j<8; j++){
-		// 		colorctx.drawImage(olay,olayx,olayy,1024,1024);
-		// 		olayx += 1024;
-		// 	}
-		// 	olayy += 1024;
-		// }
-		// colorctx.globalCompositeOperation="source-over";
-
-		$("#dis").addClass("hidden");
-		$(".viewcontrols").removeClass("disabled");
-	},20);
-	setTimeout(function(){
-		$("#canover").removeClass("visible");
-	},200);
-}
-
-// Uncolor
 
 function uncolor(){
-	$(".viewcontrols").addClass("disabled");
-	$("#dis").removeClass("hidden");
-	// $("#colorizer").addClass("hidden");
-	// $("a.colorize").removeClass("active");
-	// $("#container").removeClass("colorizer");
-	// $("#canover").removeClass("colorizer");
-	colorctx.clearRect(-res*2, -res*2, res*4, res*4);
+	canvas.classList.remove('hidden');
+	colorctx.clearRect(0, 0, colorCanvas.width, colorCanvas.height);
+	syncPreviewButtons();
 }

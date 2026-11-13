@@ -897,16 +897,19 @@
             <button class="btn small" type="button" data-sf-page="gen/wyre.html">走线</button>
             <button class="btn small" type="button" data-sf-page="gen/dotgrid.html">点阵</button>
           </div>
-          <label class="sftex-size-label" for="sftex-size">尺寸</label>
-          <select id="sftex-size" class="sftex-size-select" title="生成与导出的贴图边长（像素）">
-            <option value="512">512</option>
-            <option value="1024" selected>1024</option>
-            <option value="2048">2048</option>
-            <option value="4096">4096</option>
-            <option value="8192">8192</option>
-          </select>
           <span class="sftex-spacer"></span>
-          <button class="btn small sftex-export" id="sftex-export" type="button" title="导出当前预览的贴图（高度图或着色图）">导出</button>
+          <div class="sftex-export-group">
+            <label class="sftex-size-label" for="sftex-size">尺寸</label>
+            <select id="sftex-size" class="sftex-size-select" title="生成与导出的贴图边长（像素）">
+              <option value="512">512</option>
+              <option value="1024" selected>1024</option>
+              <option value="2048">2048</option>
+              <option value="4096">4096</option>
+              <option value="8192">8192</option>
+            </select>
+            <button class="btn small sftex-export" id="sftex-export" type="button" title="导出当前预览的贴图（高度图或着色图）">导出</button>
+            <button class="btn small" id="sftex-open-dir" type="button" title="在资源管理器中打开输出目录" hidden>打开目录</button>
+          </div>
           <button class="btn small" id="sftex-dir" type="button" title="设置导出目录">输出目录…</button>
           <span class="sftex-dir" id="sftex-dir-label"></span>
           <button class="btn tiny" id="sftex-dir-clear" type="button" title="清除输出目录" hidden>×</button>
@@ -925,7 +928,10 @@
             ></iframe>
           </div>
         </div>
-        <div class="sftex-status" id="sftex-status" aria-live="polite"></div>
+        <div class="sftex-status-row">
+          <span class="sftex-status" id="sftex-status" aria-live="polite"></span>
+          <button class="io-link" id="sftex-reveal-export" type="button" title="在资源管理器中选中刚导出的文件" hidden>导出目录</button>
+        </div>
       </div>
     </div>
 

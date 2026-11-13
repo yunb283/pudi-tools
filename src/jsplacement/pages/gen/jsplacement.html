@@ -1,8 +1,4 @@
 <div class="canvasbox">
-	<div class="viewcontrols disabled">
-		<a href="#" onclick="showHeight(1);">高度图</a>
-		<a href="#" onclick="showHeight(0);">着色图</a>
-	</div>
 	<div class="canvasboxinner">
 		<canvas id="dis" generated="nope" width="1024" height="1024" onclick="refresh()">
 		</canvas>
@@ -266,11 +262,10 @@
 
 <div class="newactions">
 	<a href="#" id="RandomizeAll" onclick="randomizeAll()">随机参数</a>
-	<a href="#" id="ShowPresets" onclick="ShowPresets()">预设</a>
+	<button type="button" id="ShowPresets" aria-controls="presetlist" aria-expanded="false">预设</button>
 </div>
 <div id="presetlist" class="hidden">
 </div>
-<div class="presethider" onclick="HidePresets()"></div>
 
 <div id="colorizer" class="hidden">
 </div>
@@ -301,7 +296,4 @@
 	var seamlsmode = 0;
 	var timestamp;
 	var guidepage = "jsc";
-	$(function() {
-		$("#colorizer").load("pages/gradients.html");
-	});
 </script>

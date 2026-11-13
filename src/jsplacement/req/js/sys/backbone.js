@@ -15,6 +15,7 @@ win.webContents.session.clearCache(function(){
 
 /* fs module + paths */
 
+var __dirname = ".";
 const fs = require('fs-extra');
 
 var homepath = app.getPath('home') + "/JSplacement";
@@ -35,15 +36,6 @@ if(!fs.existsSync(homepath + "/CustomSprites")){
 if(!fs.existsSync(homepath + "/CustomGradients")){
   fs.mkdirSync(homepath + '/CustomGradients');
 }
-
-/* Startup */
-
-$(function() {
-  $("#container").load("pages/home.html", function(){
-    // 嵌入版：片段注入后立刻重排成工具箱的左右两栏
-    if (window.sfLayout) window.sfLayout();
-  });
-});
 
 // RNG
 function rand(min, max) {

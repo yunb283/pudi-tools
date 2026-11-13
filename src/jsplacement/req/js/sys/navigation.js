@@ -9,26 +9,6 @@ function hideMenu(){
   $( "svg.menubutton" ).removeClass( "visible" );
 }
 
-function unload(){
-  $( "div#container" ).toggleClass( "hiding" );
-  setTimeout(function(){
-    $("#container").empty();
-  }, 125);
-}
-
-function loadPage(page){
-  setTimeout(function(){
-    $("#container").load("pages/"+page, function(){
-      // 嵌入版：片段注入后立刻重排成工具箱的左右两栏
-      if (window.sfLayout) window.sfLayout();
-    });
-  }, 250);
-  setTimeout(function(){
-    $( "div#container" ).toggleClass("hiding");
-  }, 375);
-  hideColorizer()
-}
-
 function goToPage(url) {
   // 嵌入版：让宿主用系统默认浏览器打开，别在 Tauri 的 WebView 里整窗跳走
   if (typeof window.SFTEX_openExternal === 'function') window.SFTEX_openExternal(url);
@@ -59,7 +39,6 @@ function toggleColorizer(){
 	$("#colorizer").toggleClass("hidden");
 	$("a.colorize").toggleClass("active");
 	$("#container").toggleClass("colorizer");
-	$("#canover").toggleClass("colorizer");
 	loadGrad();
 }
 
@@ -67,5 +46,4 @@ function hideColorizer(){
 	$("#colorizer").addClass("hidden");
 	$("a.colorize").removeClass("active");
 	$("#container").removeClass("colorizer");
-	$("#canover").removeClass("colorizer");
 }

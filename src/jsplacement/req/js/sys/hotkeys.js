@@ -17,22 +17,22 @@ $(document).keyup(function(e) {
 	else{
 
 		// Generators
-		if ((e.which == 49)||(e.which == 97)) { hideMenu();unload();loadPage('gen/jsplacement.html'); }
-		else if ((e.which == 50)||(e.which == 98)) { hideMenu();unload();loadPage('gen/jsplacement2.html'); }
-		// else if ((e.which == 51)||(e.which == 99)) { hideMenu();unload();loadPage('gen/ultra.html'); }
-		else if ((e.which == 51)||(e.which == 99)) { hideMenu();unload();loadPage('gen/velvet.html'); }
-		// else if (e.which == 52) { hideMenu();unload();loadPage('gen/metropolis.html'); }
-		else if ((e.which == 52)||(e.which == 100)) { hideMenu();unload();loadPage('gen/wyre.html'); }
-		else if ((e.which == 53)||(e.which == 101)) { hideMenu();unload();loadPage('gen/dotgrid.html'); }
+		if ((e.which == 49)||(e.which == 97)) { loadPage('gen/jsplacement.html'); }
+		else if ((e.which == 50)||(e.which == 98)) { loadPage('gen/jsplacement2.html'); }
+		// else if ((e.which == 51)||(e.which == 99)) { loadPage('gen/ultra.html'); }
+		else if ((e.which == 51)||(e.which == 99)) { loadPage('gen/velvet.html'); }
+		// else if (e.which == 52) { loadPage('gen/metropolis.html'); }
+		else if ((e.which == 52)||(e.which == 100)) { loadPage('gen/wyre.html'); }
+		else if ((e.which == 53)||(e.which == 101)) { loadPage('gen/dotgrid.html'); }
 
 		// Home & About
-		else if ((e.which == 72)||(e.which == 48)||(e.which == 96)) { hideMenu();unload();loadPage('home.html'); }
-		else if (e.which == 65) { hideMenu();unload();loadPage('about.html'); }
+		else if ((e.which == 72)||(e.which == 48)||(e.which == 96)) { loadPage('home.html'); }
+		else if (e.which == 65) { loadPage('about.html'); }
 
 		// Generator
-		else if (e.which == 82) { refresh(); }
-		else if (e.which == 83) { saveHeight(savename); }
-		else if (e.which == 73) { invertMap(savename); }
+		else if (e.which == 82 && window.canvas) { refresh(); }
+		else if (e.which == 83 && window.canvas?.getAttribute('generated') === 'yup') { saveHeight(savename); }
+		else if (e.which == 73 && window.canvas?.getAttribute('generated') === 'yup') { invertMap(savename); }
 
 		// Menu
 		else if (e.which == 77) { toggleMenu(); }

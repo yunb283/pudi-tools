@@ -11,7 +11,7 @@
  *   3) 顶栏「导出」让 iframe 把当前预览的画布（高度图或着色图）送进 saveAs 通道；
  *   4) 同步深 / 浅色主题，并把框内的 saveAs / 外链请求桥接到工具箱自己的通道。
  */
-import { isTauri, saveBlob } from './platform.js';
+import { isTauri, openPath, saveBlob } from './platform.js';
 
 const DIR_KEY = 'sftex.outDir';
 const SIZE_KEY = 'sftex.size';
@@ -25,9 +25,11 @@ export function initSftexPage() {
   const reloadBtn = document.getElementById('sftex-reload');
   const guideBtn = document.getElementById('sftex-guide');
   const exportBtn = document.getElementById('sftex-export');
+  const openDirBtn = document.getElementById('sftex-open-dir');
   const sizeSel = document.getElementById('sftex-size');
   const navButtons = document.querySelectorAll('#sftex-head [data-sf-page]');
   const status = document.getElementById('sftex-status');
+  const revealExportBtn = document.getElementById('sftex-reveal-export');
 
   let size = 1024;
   try {
@@ -47,20 +49,27 @@ export function initSftexPage() {
   let loaded = false;
   let saving = false;
   let statusTimer = 0;
+  let lastExportDir = '';
+  let statusExportPath = '';
   let pendingNav = null;
   let pendingExport = false;
 
-  function setStatus(text, ok = true) {
+  function setStatus(text, ok = true, exportPath = '') {
     status.textContent = text || '';
+    status.title = text || '';
     status.classList.toggle('error', !ok);
+    statusExportPath = exportPath;
+    revealExportBtn.hidden = !exportPath;
     clearTimeout(statusTimer);
-    if (text) statusTimer = setTimeout(() => setStatus('', true), 6000);
+    if (text && !exportPath) statusTimer = setTimeout(() => setStatus(''), 6000);
   }
 
   function syncDirLabel() {
     dirLabel.textContent = outDir || '未设置（导出时询问）';
     dirLabel.title = outDir || '未设置输出目录，导出时会弹目录选择框';
     dirClear.hidden = !outDir;
+    openDirBtn.hidden = !isTauri;
+    openDirBtn.disabled = !outDir && !lastExportDir;
   }
 
   // iframe 内的 embed.js 会跟着工具箱的主题切换，宿主这边负责把状态推过去
@@ -93,8 +102,6 @@ export function initSftexPage() {
   }
 
   function requestNav(msg) {
-    // 使用指南只是弹层，不改变当前生成器，别动按钮高亮
-    if (msg.page) markHostPage(msg.page);
     // 第一次进入页签时 iframe 可能还在加载，等 load 后再把命令补发过去
     if (!loaded || frame.contentDocument?.readyState !== 'complete') {
       pendingNav = msg;
@@ -136,6 +143,19 @@ export function initSftexPage() {
     }
     setStatus('正在准备导出当前贴图…');
     postToFrame({ __sftexExport: true });
+  });
+  openDirBtn.addEventListener('click', async () => {
+    const error = await openPath(outDir || lastExportDir);
+    if (error) setStatus('打开目录失败：' + error, false, statusExportPath);
+  });
+  revealExportBtn.addEventListener('click', async () => {
+    const path = statusExportPath;
+    if (!path) return;
+    try {
+      await window.__TAURI__.core.invoke('reveal_file', { path });
+    } catch (e) {
+      if (statusExportPath === path) setStatus('定位导出文件失败：' + (e?.message || e), false, path);
+    }
   });
   sizeSel.addEventListener('change', () => {
     const n = Number(sizeSel.value);
@@ -253,7 +273,11 @@ export function initSftexPage() {
           return;
         }
         const saved = await saveBlob(d.name, bytes, dir || null, { unique: true });
-        setStatus('已保存：' + (saved || d.name));
+        if (isTauri && saved) {
+          lastExportDir = dir;
+          syncDirLabel();
+        }
+        setStatus('已保存：' + (saved || d.name), true, isTauri && saved ? saved : '');
       } catch (e) {
         setStatus('保存失败：' + (e?.message || e), false);
       } finally {

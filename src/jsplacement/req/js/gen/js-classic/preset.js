@@ -46,12 +46,9 @@ function Preset(x){
   refresh();
 }
 
-function ShowPresets(){
-  $('#presetlist').removeClass('hidden');
-  $('#ShowPresets').addClass('active');
-}
-
-function HidePresets(){
-  $('#presetlist').addClass('hidden');
-  $('#ShowPresets').removeClass('active');
-}
+$('#ShowPresets').on('click', function () {
+  var list = $('#presetlist');
+  var expanded = list.hasClass('hidden');
+  list.toggleClass('hidden', !expanded);
+  this.setAttribute('aria-expanded', String(expanded));
+});

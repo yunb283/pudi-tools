@@ -1,49 +1,139 @@
-// Refresh map
-function refresh(){
-	undoctx.drawImage(canvas,0,0);
-	$("#canover").addClass("visible");
-	setTimestamp();
-	setTimeout(function(){
-		ctx.clearRect(-res*2, -res*2, res*4, res*4);
-		$.when(uncolor()).then(generateMap()).then(function(){
-	    $("#canover").removeClass("visible");
-			$(".actionbox a").removeClass("disabled");
+// 所有生成器按原版 8192 坐标排布，画布只分配实际输出所需的像素。
+var res = 8192;
+var canvas = document.getElementById('dis');
+var colorCanvas = document.getElementById('dat');
+var outputSize = window.SFTEX_RES || 1024;
+canvas.width = canvas.height = outputSize;
+colorCanvas.width = colorCanvas.height = outputSize;
+var ctx = canvas.getContext('2d');
+var pixelScale = outputSize / res;
+ctx.scale(pixelScale, pixelScale);
+ctx.imageSmoothingQuality = 'high';
 
-			if($("canvas#dis").attr("generated") == "nope"){
-				$("canvas#dis").attr("generated","yup");
-				$(".actionbox a.undo").addClass("disabled");
+var undoCanvas = document.createElement('canvas');
+undoCanvas.width = undoCanvas.height = outputSize;
+var undoctx = undoCanvas.getContext('2d');
+
+var normalCanvas = document.getElementById('sf-normal-preview');
+var normalToggle = document.querySelector('.sf-normal-toggle');
+var heightToggle = document.querySelector('.sf-height-toggle');
+var gradientToggle = document.querySelector('.sf-gradient-toggle');
+var normalDirty = true;
+normalCanvas.addEventListener('click', refresh);
+heightToggle.addEventListener('click', function () { showHeight(1); });
+gradientToggle.addEventListener('click', function () { showRandomGradient(); });
+normalToggle.addEventListener('click', function () {
+	if (!normalCanvas.hidden) {
+		setNormalVisible(false);
+		return;
+	}
+	schedulePreviewUpdate(function () {
+		getNormalMap();
+		setNormalVisible(true);
+	});
+});
+
+function setNormalVisible(visible) {
+	normalCanvas.hidden = !visible;
+	syncPreviewButtons();
+}
+
+function syncPreviewButtons() {
+	var disabled = canvas.getAttribute('generated') !== 'yup' ||
+		canvas.closest('.canvasbox').hasAttribute('aria-busy');
+	var normal = !normalCanvas.hidden;
+	var gradient = !normal && canvas.classList.contains('hidden');
+	for (var [button, active] of [[normalToggle, normal], [gradientToggle, gradient], [heightToggle, !normal && !gradient]]) {
+		button.disabled = disabled;
+		button.classList.toggle('on', active);
+		button.setAttribute('aria-pressed', String(active));
+	}
+}
+
+function invalidateNormalMap() {
+	normalDirty = true;
+	if (!normalCanvas.hidden) getNormalMap();
+}
+
+// Keep the current image visible while a generation or palette update is pending.
+function schedulePreviewUpdate(update) {
+	var target = canvas;
+	if (!target) return;
+	var preview = target.closest('.canvasbox');
+	var request = (target.previewRequest || 0) + 1;
+	target.previewRequest = request;
+	var isCurrent = () => canvas === target && target.previewRequest === request;
+	preview.setAttribute('aria-busy', 'true');
+	syncPreviewButtons();
+	setTimeout(async function(){
+		if (!isCurrent()) return;
+		try {
+			await update(target, isCurrent);
+		} finally {
+			if (isCurrent()) {
+				preview.removeAttribute('aria-busy');
+				syncPreviewButtons();
 			}
-	  });
-	}, 20);
+		}
+	}, 0);
+}
+
+function refresh(){
+	schedulePreviewUpdate(async function (target, isCurrent) {
+		if (typeof prepareGenerator === 'function') {
+			await prepareGenerator();
+			if (!isCurrent()) return;
+		}
+		var alreadyGenerated = target.getAttribute('generated') === 'yup';
+		if (alreadyGenerated) {
+			undoctx.clearRect(0, 0, target.width, target.height);
+			undoctx.drawImage(target, 0, 0);
+		}
+		setTimestamp();
+		ctx.clearRect(-res*2, -res*2, res*4, res*4);
+		generateMap();
+		invalidateNormalMap();
+		uncolor();
+		$('.actionbox a').removeClass('disabled');
+		if (!alreadyGenerated) {
+			target.setAttribute('generated', 'yup');
+			$('.actionbox a.undo').addClass('disabled');
+		}
+	});
 }
 
 // Undo
 function undoMap(){
 	setTimestamp();
 	uncolor();
-	ctx.clearRect(-res*2, -res*2, res*4, res*4);
-	ctx.drawImage(undoCanvas, -cord, -cord);
+	ctx.save();
+	ctx.resetTransform();
+	ctx.globalCompositeOperation = 'copy';
+	ctx.drawImage(undoCanvas, 0, 0);
+	ctx.restore();
+	invalidateNormalMap();
 }
 
 // Invert map
 function invertMap(){
 	setTimestamp();
 	uncolor();
+	ctx.save();
+	ctx.resetTransform();
 	ctx.globalCompositeOperation="difference";
 
 	ctx.fillStyle = "rgb(255,255,255)";
-	ctx.fillRect(-cord, -cord, res, res);
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-	ctx.globalCompositeOperation="source-over";
+	ctx.restore();
+	invalidateNormalMap();
 }
 
 // View controls
 
 function showHeight(y){
-	switch (y) {
-		case 0: $("#dis").addClass("hidden");break;
-		case 1: $("#dis").removeClass("hidden");break;
-	}
+	canvas.classList.toggle('hidden', y === 0);
+	setNormalVisible(false);
 }
 
 
@@ -60,62 +150,48 @@ function saveHeight(savename){
 	});
 }
 
-// Save Normal
-function saveNormal(savename,depth){
-
-	var normalCanvas = document.createElement('canvas');
-	normalCanvas.width = res;
-	normalCanvas.height = res;
-	var ctxnorm = normalCanvas.getContext('2d');
-
-	var source = ctx.getImageData( 0, 0, res, res );
-	var destination = ctx.createImageData( res, res );
-
-	for(var i=0, l=res*res*4; i<l; i+=4){
-
-		var x1, x2, y1, y2;
-
-		if(i%(res*4) == 0){
-			x1 = source.data[i];
-			x2 = source.data[i+4];
-		}
-
-		else if(i%(res*4) == (res-1)*4){
-			x1 = source.data[i-4];
-			x2 = source.data[i];
-		}
-
-		else{
-			x1 = source.data[i-4];
-			x2 = source.data[i+4];
-		}
-
-
-
-		if(i<res*4){
-			y1 = source.data[i];
-			y2 = source.data[i+res*4];
-		}
-
-		else if(i>res*(res-1)*4){
-			y1 = source.data[i-res*4];
-			y2 = source.data[i];
-		}
-
-		else{
-			y1 = source.data[i-res*4];
-			y2 = source.data[i+res*4];
-		}
-
-		destination.data[i] = (x1-x2)+127;
-		destination.data[i+1] = (y1-y2)+127;
-		destination.data[i+2] = 255;
-		destination.data[i+3] = 255;
-
+// Preview and export share the same full-resolution normal map.
+function getNormalMap(){
+	if (!normalDirty) return normalCanvas;
+	var width = canvas.width;
+	var height = canvas.height;
+	if (normalCanvas.width !== width || normalCanvas.height !== height) {
+		normalCanvas.width = width;
+		normalCanvas.height = height;
 	}
+	var ctxnorm = normalCanvas.getContext('2d');
+	var stride = width * 4;
+	var rowsPerChunk = 256;
+	var destination = ctxnorm.createImageData(width, Math.min(rowsPerChunk, height));
+	var data = destination.data;
+	// Read one extra row on each side so the derivative stays continuous across chunk boundaries.
+	for (var top = 0; top < height; top += rowsPerChunk) {
+		var rows = Math.min(rowsPerChunk, height - top);
+		var sourceTop = Math.max(0, top - 1);
+		var sourceEnd = Math.min(height, top + rows + 1);
+		var source = ctx.getImageData(0, sourceTop, width, sourceEnd - sourceTop).data;
+		var offset = (top - sourceTop) * stride;
+		for (var y = 0; y < rows; y++) {
+			var up = top + y === 0 ? 0 : stride;
+			var down = top + y === height - 1 ? 0 : stride;
+			for (var x = 0; x < width; x++) {
+				var i = y * stride + x * 4;
+				var sample = i + offset;
+				var left = x === 0 ? sample : sample - 4;
+				var right = x === width - 1 ? sample : sample + 4;
+				data[i] = source[left] - source[right] + 127;
+				data[i + 1] = source[sample - up] - source[sample + down] + 127;
+				data[i + 2] = 255;
+				data[i + 3] = 255;
+			}
+		}
+		ctxnorm.putImageData(destination, 0, top, 0, 0, width, rows);
+	}
+	normalDirty = false;
+	return normalCanvas;
+}
 
-	ctxnorm.putImageData( destination, 0, 0 );
-
+function saveNormal(savename){
 	savename += timestamp;
 	if(seamlsmode == "1"){
 		savename += "-Seamless";
@@ -123,7 +199,7 @@ function saveNormal(savename,depth){
 	savename += "-Normal";
 	savename += ".png";
 
-	normalCanvas.toBlob(function(blob) {
+	getNormalMap().toBlob(function(blob) {
 		saveAs(blob, savename);
 	});
 }

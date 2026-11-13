@@ -18,8 +18,53 @@
   var sizeParam = /[?&]size=(\d+)/.exec(window.location.search);
   window.SFTEX_RES = normalizeSize(sizeParam ? sizeParam[1] : 1024);
 
-  var currentPage = 'home.html';
+  var HOME = 'home.html';
+  var pages = new Set([
+    HOME, 'settings.html', 'about.html', 'gen/jsplacement.html', 'gen/jsplacement2.html',
+    'gen/velvet.html', 'gen/wyre.html', 'gen/dotgrid.html',
+  ]);
+  var resources = new Map();
+  var preparedPages = new Map();
+  var currentPage = null;
+  var requestedPage = HOME;
+  var mountedSize = 0;
+  var navigationId = 0;
   var canvasObserver = null;
+
+  function readText(path) {
+    if (!resources.has(path)) {
+      var request = fetch(path).then(function (res) {
+        if (!res.ok) throw new Error('读取失败：' + path);
+        return res.text();
+      }).catch(function (error) {
+        resources.delete(path);
+        throw error;
+      });
+      resources.set(path, request);
+    }
+    return resources.get(path);
+  }
+
+  function preparePage(page) {
+    if (!preparedPages.has(page)) {
+      var request = readText('pages/' + page).then(async function (html) {
+        var template = document.createElement('template');
+        template.innerHTML = html;
+        var scripts = Array.from(template.content.querySelectorAll('script'), function (script) {
+          var src = script.getAttribute('src');
+          var content = src ? readText(src) : script.textContent;
+          script.remove();
+          return content;
+        });
+        return { template: template, scripts: await Promise.all(scripts) };
+      }).catch(function (error) {
+        preparedPages.delete(page);
+        throw error;
+      });
+      preparedPages.set(page, request);
+    }
+    return preparedPages.get(page);
+  }
 
   /* ---------- 8K 画布等比预览 ---------- */
 
@@ -29,8 +74,8 @@
     if (!box || !inner) return;
     var side = Math.floor(Math.min(box.clientWidth, box.clientHeight)) - 8;
     if (side < 80) return;
-    inner.style.width = side + 'px';
-    inner.style.height = side + 'px';
+    var length = side + 'px';
+    if (inner.style.width !== length) inner.style.width = inner.style.height = length;
   }
 
   function watchCanvas() {
@@ -44,21 +89,15 @@
     if (typeof ResizeObserver !== 'undefined') {
       canvasObserver = new ResizeObserver(fitCanvas);
       canvasObserver.observe(box);
+    } else {
+      window.addEventListener('resize', fitCanvas);
     }
-    window.addEventListener('resize', fitCanvas, { once: true });
   }
 
   /* ---------- 把生成器片段重排成左右面板 ---------- */
 
-  function sfLayout() {
-    var c = document.getElementById('container');
-    if (!c) return;
-
-    // 已经排过版（或页面自己带了 .sf-left 骨架）就跳过，避免重复包裹
-    if (c.querySelector(':scope > .sf-left')) {
-      watchCanvas();
-      return;
-    }
+  function sfLayout(c) {
+    if (c.querySelector(':scope > .sf-left')) return;
 
     var canvasbox = c.querySelector('.canvasbox');
     if (!canvasbox) {
@@ -98,12 +137,23 @@
     if (actions) left.appendChild(actions);
 
     var rightHead = document.createElement('div');
-    rightHead.className = 'panel-head';
+    rightHead.className = 'panel-head sf-preview-head';
     rightHead.innerHTML =
       '<span class="panel-title">贴图预览</span>' +
+      '<div class="viewcontrols" role="group" aria-label="贴图预览模式">' +
+      '<button class="btn tiny sf-height-toggle on" type="button" aria-controls="dis" ' +
+      'aria-pressed="true" disabled>黑白预览</button>' +
+      '<button class="btn tiny sf-gradient-toggle" type="button" aria-controls="dat" ' +
+      'aria-pressed="false" title="每次点击随机切换一组渐变" disabled>渐变预览</button>' +
+      '<button class="btn tiny sf-normal-toggle" type="button" aria-controls="sf-normal-preview" ' +
+      'aria-pressed="false" title="预览当前贴图的法线图" disabled>法线预览</button></div>' +
       '<span class="sf-hint">' + window.SFTEX_RES + ' × ' + window.SFTEX_RES + ' · 点击画布可重新生成</span>';
-    var views = canvasbox.querySelector('.viewcontrols');
-    if (views) rightHead.appendChild(views);
+    var normal = document.createElement('canvas');
+    normal.id = 'sf-normal-preview';
+    normal.width = normal.height = 1;
+    normal.hidden = true;
+    normal.setAttribute('aria-label', '法线贴图');
+    canvasbox.querySelector('.canvasboxinner').appendChild(normal);
     right.appendChild(rightHead);
 
     right.appendChild(canvasbox);
@@ -129,10 +179,7 @@
     }
     syncRadios();
 
-    watchCanvas();
   }
-
-  window.sfLayout = sfLayout;
 
   /* ---------- 顶部工具条 ---------- */
 
@@ -155,13 +202,69 @@
     notifyHost(page);
   }
 
-  function navigate(page) {
-    currentPage = page;
-    markActive(page);
+  async function navigate(page) {
+    if (!pages.has(page)) return;
+    var c = document.getElementById('container');
+    if (!c) return;
+    requestedPage = page;
+    var id = ++navigationId;
     hideMenu();
-    unload();
-    loadPage(page);
+    var size = window.SFTEX_RES;
+    if (page === currentPage && (!page.startsWith('gen/') || size === mountedSize)) {
+      c.removeAttribute('aria-busy');
+      markActive(page);
+      return;
+    }
+    c.setAttribute('aria-busy', 'true');
+    try {
+      var prepared = await preparePage(page);
+      if (id !== navigationId) return;
+      var next = document.createElement('div');
+      next.appendChild(prepared.template.content.cloneNode(true));
+      sfLayout(next);
+
+      // DOM 和脚本全部就绪后在同一帧替换，避免空白页和全局变量指向旧画布。
+      var oldCanvases = [window.canvas, window.colorCanvas, window.undoCanvas, window.normalCanvas];
+      c.replaceChildren(...next.childNodes);
+      oldCanvases.forEach(function (canvas) {
+        if (canvas instanceof HTMLCanvasElement) canvas.width = canvas.height = 0;
+      });
+      for (var key of [
+        'canvas', 'ctx', 'colorCanvas', 'colorctx', 'undoCanvas', 'undoctx', 'normalCanvas',
+        'normalToggle', 'heightToggle', 'gradientToggle',
+        'pupu', 'prepareGenerator', 'spriteImagesReady',
+      ]) {
+        if (key in window) window[key] = null;
+      }
+      hideColorizer();
+      for (var source of prepared.scripts) {
+        var script = document.createElement('script');
+        script.textContent = source;
+        c.appendChild(script);
+        script.remove();
+      }
+      currentPage = page;
+      mountedSize = size;
+      document.getElementById('sf-nav-error').hidden = true;
+      watchCanvas();
+      markActive(page);
+    } catch (error) {
+      if (id !== navigationId) return;
+      requestedPage = currentPage || HOME;
+      if (currentPage) markActive(currentPage);
+      var text = '载入页面失败：' + error.message;
+      if (window.parent !== window) tellHost(text, false);
+      if (!currentPage || window.parent === window) {
+        var status = document.getElementById('sf-nav-error');
+        status.textContent = text;
+        status.hidden = false;
+      }
+    } finally {
+      if (id === navigationId) c.removeAttribute('aria-busy');
+    }
   }
+
+  window.loadPage = navigate;
 
   $(function () {
     // 只有单独打开这个页面时才显示内置工具条；嵌在工具箱里由宿主顶栏接管
@@ -177,15 +280,7 @@
     var guideBtn = document.getElementById('sf-btn-guide');
     if (guideBtn) guideBtn.addEventListener('click', function () { gitGuide(); });
 
-    // 键盘热键（1–5 / H / A）走的是全局 loadPage，包一层同步工具条高亮
-    var originalLoadPage = window.loadPage;
-    window.loadPage = function (page) {
-      currentPage = page;
-      markActive(page);
-      return originalLoadPage.apply(this, arguments);
-    };
-
-    markActive(currentPage);
+    navigate(HOME);
   });
 
   /* ---------- 顶栏「导出」：把当前预览的那张画布送进宿主保存通道 ---------- */
@@ -203,6 +298,10 @@
   }
 
   function exportCurrent() {
+    if (document.getElementById('container').hasAttribute('aria-busy')) {
+      tellHost('正在切换生成器，请稍候再导出', false);
+      return;
+    }
     var dis = document.getElementById('dis');
     var dat = document.getElementById('dat');
     if (!dis || !dat) {
@@ -213,9 +312,10 @@
       tellHost('请先点「生成」生成贴图，再导出', false);
       return;
     }
-    // showHeight(0) / 渐变着色会给 #dis 加 hidden，此时屏幕上看到的是 #dat
-    var colored = dis.classList.contains('hidden');
-    var target = colored ? dat : dis;
+    var normal = document.getElementById('sf-normal-preview');
+    var showingNormal = normal && !normal.hidden;
+    var colored = !showingNormal && dis.classList.contains('hidden');
+    var target = showingNormal ? normal : colored ? dat : dis;
     try {
       var center = target.getContext('2d').getImageData(
         Math.floor(target.width / 2), Math.floor(target.height / 2), 1, 1
@@ -230,8 +330,8 @@
 
     var base = (typeof window.savename === 'string' && window.savename)
       ? window.savename : 'JS-Texture-';
-    var name = base + Math.floor(Date.now() / 1000) +
-      (colored ? '-Color' : '-Height') + '.png';
+    var suffix = showingNormal ? '-Normal' : colored ? '-Color' : '-Height';
+    var name = base + Math.floor(Date.now() / 1000) + suffix + '.png';
     try {
       target.toBlob(function (blob) {
         if (!blob) {
@@ -253,6 +353,7 @@
   }
 
   window.addEventListener('message', function (ev) {
+    if (ev.source !== window.parent) return;
     var d = ev.data;
     if (!d) return;
     if (d.__sftexTheme === true) {
@@ -263,8 +364,7 @@
       var nextSize = normalizeSize(d.size);
       if (nextSize !== window.SFTEX_RES) {
         window.SFTEX_RES = nextSize;
-        // 生成器页要重新加载片段，才能按新尺寸重建画布和坐标
-        if (currentPage.indexOf('gen/') === 0) navigate(currentPage);
+        if (requestedPage.startsWith('gen/')) navigate(requestedPage);
       }
       return;
     }

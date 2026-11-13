@@ -1,22 +1,4 @@
-// 嵌入版：生成分辨率由工具箱顶栏的「尺寸」下拉框决定（默认 1024）。
-// 必须在 getContext() 之前改画布尺寸，否则后面的 ctx.translate(res/2, res/2) 会错位。
-(function () {
-  var n = window.SFTEX_RES || 1024;
-  var dis = document.getElementById('dis');
-  var dat = document.getElementById('dat');
-  if (dis) { dis.width = n; dis.height = n; }
-  if (dat) { dat.width = n; dat.height = n; }
-})();
-
-var canvas = document.getElementById("dis");
-var ctx = canvas.getContext("2d");
-var res = window.SFTEX_RES || 1024;
 var cord = res/2;
-
-var undoCanvas = document.createElement('canvas');
-undoCanvas.width = res;
-undoCanvas.height = res;
-var undoctx = undoCanvas.getContext('2d');
 
 ctx.translate(res/2, res/2);
 
@@ -65,8 +47,6 @@ function generateMap(){
 
 	ctx.globalCompositeOperation = "normal";
 
-	var sourceCanvas = document.getElementById("dis");
-	ctx.drawImage(sourceCanvas, res/-2, res/-2);
 }
 
 function drawBox(max,limit,yn){

@@ -421,6 +421,46 @@ async fn open_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[cfg(windows)]
+async fn reveal_file(path: String) -> Result<(), String> {
+    use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{SHOpenFolderAndSelectItems, SHParseDisplayName};
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = std::path::absolute(path).map_err(|e| e.to_string())?;
+        if !path.is_file() {
+            return Err("导出文件不存在或无法访问".into());
+        }
+        let wide_path = HSTRING::from(path.as_os_str());
+
+        // 用 Shell 的项目 ID 定位文件，文件名里的空格和逗号无需按命令行转义。
+        unsafe {
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+                .ok()
+                .map_err(|e| format!("初始化资源管理器接口失败：{e}"))?;
+            let mut item = std::ptr::null_mut();
+            let result = SHParseDisplayName(PCWSTR(wide_path.as_ptr()), None, &mut item, 0, None)
+                .and_then(|()| SHOpenFolderAndSelectItems(item, None, 0));
+            CoTaskMemFree(Some(item.cast()));
+            CoUninitialize();
+            result.map_err(|e| format!("打开目录并选中文件失败：{e}"))
+        }
+    })
+    .await
+    .map_err(|e| format!("任务执行异常：{e}"))?
+}
+
+#[tauri::command]
+#[cfg(not(windows))]
+async fn reveal_file(path: String) -> Result<(), String> {
+    let _ = path;
+    Err("当前系统不支持定位到导出文件".into())
+}
+
+#[tauri::command]
 async fn file_size(path: String) -> Result<u64, String> {
     fs::metadata(&path)
         .map(|m| m.len())
@@ -2455,6 +2495,7 @@ pub fn run() {
             list_files,
             make_dir,
             open_path,
+            reveal_file,
             pick_files,
             stat_paths,
             list_dir,

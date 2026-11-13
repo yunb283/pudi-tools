@@ -15,7 +15,6 @@
     <script src="vendor/jquery.min.js"></script>
     <script src="sftex-data.js"></script>
     <script src="compat.js"></script>
-    <script src="WEB_PORT.js"></script>
 
     <script src="req/js/sys/backbone.js"></script>
     <script src="req/js/sys/config.js"></script>
@@ -47,11 +46,11 @@
       <button class="btn small" type="button" id="sf-btn-guide">使用指南</button>
     </div>
 
-    <!-- 页面片段由 jQuery .load() 注入，embed.js 会把它重排成左右两块 .panel -->
+    <!-- embed.js 载入页面片段并重排为左右两块 .panel -->
+    <div class="status" id="sf-nav-error" role="status" hidden></div>
     <div id="container"></div>
 
     <!-- 以下节点由原版脚本引用，保留但全部隐藏，不再显示独立窗口的 UI -->
-    <div id="canover"></div>
     <div id="digiguide" class="invisible"><div id="guide"></div></div>
     <div id="hotkeys" class="invisible"></div>
     <div id="firstrun"></div>
@@ -62,6 +61,5 @@
       <div id="vercheck"></div>
     </footer>
 
-    <script src="WEB_PORT_AFTER.js"></script>
   </body>
 </html>

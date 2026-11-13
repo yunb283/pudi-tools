@@ -31,6 +31,8 @@ zune-heic = "0.5"
 webview2-com = "0.39"
 # 只为把 ICoreWebView2Settings 向上转型到带这一项设置的 ICoreWebView2Settings3
 windows-core = "0.62"
+# 在资源管理器中选中导出文件（版本与 Tauri 的依赖一致）
+windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell_Common"] }
 # 作业对象：取消下载时一次性杀掉 yt-dlp 整棵进程树（PyInstaller 会派生真正干活的子进程）
 windows-sys = { version = "0.52", features = [
     "Win32_Foundation",

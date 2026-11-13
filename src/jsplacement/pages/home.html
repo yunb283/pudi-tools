@@ -1,26 +1,26 @@
-<div class="panel sf-left">
+<div class="panel sf-left sf-home-panel">
   <div class="panel-head">
     <span class="panel-title">选择生成器</span>
     <span class="sf-hint">共 5 种</span>
   </div>
   <div class="sf-home-list">
-    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/jsplacement.html');return false;">
+    <a href="#" class="sf-home-card" onclick="loadPage('gen/jsplacement.html');return false;">
       <strong>经典版 · 几何块面</strong>
       <span>矩形、网格与线条堆叠，内置 6 组预设，可随机化全部参数</span>
     </a>
-    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/jsplacement2.html');return false;">
+    <a href="#" class="sf-home-card" onclick="loadPage('gen/jsplacement2.html');return false;">
       <strong>精灵 2 · SVG 拼贴</strong>
       <span>四套矢量精灵随机拼贴，可调缩放、旋转、翻转与无缝平铺</span>
     </a>
-    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/velvet.html');return false;">
+    <a href="#" class="sf-home-card" onclick="loadPage('gen/velvet.html');return false;">
       <strong>柔面 · 对称曲面</strong>
       <span>柔和曲面与细密纹理，支持 X / Y 对称与分割器叠加</span>
     </a>
-    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/wyre.html');return false;">
+    <a href="#" class="sf-home-card" onclick="loadPage('gen/wyre.html');return false;">
       <strong>走线 · 线框电路</strong>
       <span>多层折线走线，可调层色、线宽与八个步进方向</span>
     </a>
-    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/dotgrid.html');return false;">
+    <a href="#" class="sf-home-card" onclick="loadPage('gen/dotgrid.html');return false;">
       <strong>点阵 · 规则网格</strong>
       <span>六种点形与七种图案组合，按概率在网格上排布</span>
     </a>
@@ -59,10 +59,11 @@
   <p>
     导出的 PNG 由工具箱统一写出：请在页签上方的「输出目录」里指定文件夹；
     未设置时第一次导出会弹出目录选择框。三种导出分别是高度图（灰度置换）、
-    法线图（由高度图换算）和着色图（需要先在「渐变着色」里选一张渐变）。
+    法线图（由高度图换算）和着色图。生成后可在「贴图预览」旁切换黑白、渐变和法线。
+    每点一次「渐变预览」会随机换一组颜色，也可在「渐变着色」里手选。顶栏「导出」会保存当前显示的贴图。
   </p>
   <p>
-    尺寸越大越占用内存：默认 1024 × 1024 很轻量，选到 8192 × 8192 时与原版一致，一次生成会明显变慢。切换尺寸后需要重新点「生成」。
+    各尺寸都按 8192 的构图比例生成，缩小尺寸仍保留整幅纹理，细线和小图案会更柔和。尺寸越大越占用内存。切换尺寸后请重新点「生成」。
   </p>
 
   <h3>来源</h3>

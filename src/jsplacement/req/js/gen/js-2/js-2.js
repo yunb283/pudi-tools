@@ -1,14 +1,5 @@
-// 嵌入版：生成分辨率由工具箱顶栏的「尺寸」下拉框决定（默认 1024）。
-// 必须在 getContext() 之前改画布尺寸，否则后面的 ctx.translate(res/2, res/2) 会错位。
-(function () {
-  var n = window.SFTEX_RES || 1024;
-  var dis = document.getElementById('dis');
-  var dat = document.getElementById('dat');
-  if (dis) { dis.width = n; dis.height = n; }
-  if (dat) { dat.width = n; dat.height = n; }
-})();
-
 function generateMap(){
+	var sprites = Array.from(pupu.children).filter(function (image) { return image.naturalWidth > 0; });
 
 	var bgcol = document.getElementById('bgcol').value;
 	var iters = document.getElementById('iterations').value;
@@ -27,13 +18,12 @@ function generateMap(){
 	var minime = 125-document.getElementById('minsize').value;
 	var maxime = minime*1.5;
 
-	if(bgits != "0"){
+	if(bgits != "0" && sprites.length){
 		var bets = 1;
 		for(i = 1; i <= bgits; i++){
 			for(yi = -cord; yi <= cord; yi+=(res/bets)){
 				for(xi = -cord; xi <= cord; xi+=(res/bets)){
-					var rng = rand(0,files.length-1);
-					var img = document.getElementById(files[rng]);
+					var img = sprites[rand(0, sprites.length - 1)];
 					ctx.drawImage(img,xi,yi,res/bets,res/bets);
 				}
 			}
@@ -41,124 +31,111 @@ function generateMap(){
 		}
 	}
 
-	for(i = 0; i < iters; i++) {
-		setTimeout(function() {
-			if(seamlsmode == "1"){
-				var scale = (res/rand(maxime,minime))*rand(10,25);
-				var posx = rand(-res,res);
-				var posy = rand(-res,res);
+	for (var i = 0; i < iters && sprites.length; i++) {
+		if(seamlsmode == "1"){
+			var scale = (res/rand(maxime,minime))*rand(10,25);
+			var posx = rand(-res,res);
+			var posy = rand(-res,res);
+		}
+		else{
+			var scale = (res/rand(maxime,minime))*rand(10,25);
+			var posx = rand(-cord-(cord/4),cord);
+			var posy = rand(-cord-(cord/4),cord);
+		}
+
+		var img = sprites[rand(0, sprites.length - 1)];
+
+		if(rotatemode == "1"){
+			var roota = rand(0,3)*90; // 0, 90, 180, 270
+			if(roota != 0){ctx.rotate(roota*Math.PI/180);}
+		}
+
+		if(mirrormode == "1"){
+			var flip = rand(0,1);
+			if(flip == "0"){ ctx.scale(-1,1); }
+		}
+
+		var mood = rand(0,mode.length-1);
+
+		if(blendimode == "1"){
+			ctx.globalCompositeOperation = mode[mood];
+		}
+
+		ctx.drawImage(img,posx,posy,scale,scale);
+
+		if(seamlsmode == "1"){
+			if((posx+scale >= cord) && (posy+scale >= cord)){
+				posx = posx-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posy = posy-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posx = posx+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
 			}
-			else{
-				var scale = (res/rand(maxime,minime))*rand(10,25);
-				var posx = rand(-cord-(cord/4),cord);
-				var posy = rand(-cord-(cord/4),cord);
+			else if((posx <= -cord) && (posy+scale >= cord)){
+				posx = posx+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posy = posy-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posx = posx-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
 			}
-
-			var rng = rand(0,files.length-1);
-			var img = document.getElementById(files[rng]);
-
-			if(rotatemode == "1"){
-				var roota = rand(0,3)*90; // 0, 90, 180, 270
-				if(roota != 0){ctx.rotate(roota*Math.PI/180);}
+			else if((posx+scale >= cord) && (posy <= -cord)){
+				posx = posx-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posy = posy+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posx = posx+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
 			}
-
-			if(mirrormode == "1"){
-				var flip = rand(0,1);
-				if(flip == "0"){ ctx.scale(-1,1); }
-			}
-
-			var mood = rand(0,mode.length-1);
-
-			if(blendimode == "1"){
-				ctx.globalCompositeOperation = mode[mood];
-			}
-
-			ctx.drawImage(img,posx,posy,scale,scale);
-
-			if(seamlsmode == "1"){
-				if((posx+scale >= cord) && (posy+scale >= cord)){
-					posx = posx-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posy = posy-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posx = posx+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-				else if((posx <= -cord) && (posy+scale >= cord)){
-					posx = posx+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posy = posy-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posx = posx-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-				else if((posx+scale >= cord) && (posy <= -cord)){
-					posx = posx-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posy = posy+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posx = posx+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-				else if((posx <= -cord) && (posy <= -cord)){
-					posx = posx+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posy = posy+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-					posx = posx-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-
-
-				else if(posx+scale >= cord){
-					posx = posx-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-				else if(posx <= -cord){
-					posx = posx+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-				else if(posy+scale >= cord){
-					posy = posy-res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
-				else if(posy <= -cord){
-					posy = posy+res;
-					ctx.drawImage(img,posx,posy,scale,scale);
-				}
+			else if((posx <= -cord) && (posy <= -cord)){
+				posx = posx+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posy = posy+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+				posx = posx-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
 			}
 
-			if(mirrormode == "1"){
-				if(flip == "0"){ ctx.scale(-1,1); }
-			}
 
-			if(rotatemode == "1"){
-				if(roota != 0){ctx.rotate(-roota*Math.PI/180);}
+			else if(posx+scale >= cord){
+				posx = posx-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
 			}
-		}, 20);
+			else if(posx <= -cord){
+				posx = posx+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+			}
+			else if(posy+scale >= cord){
+				posy = posy-res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+			}
+			else if(posy <= -cord){
+				posy = posy+res;
+				ctx.drawImage(img,posx,posy,scale,scale);
+			}
+		}
+
+		if(mirrormode == "1"){
+			if(flip == "0"){ ctx.scale(-1,1); }
+		}
+
+		if(rotatemode == "1"){
+			if(roota != 0){ctx.rotate(-roota*Math.PI/180);}
+		}
 	}
-	var sourceCanvas = document.getElementById("dis");
-	ctx.drawImage(sourceCanvas, -cord, -cord);
 }
 
-$(document).ready(function() {
-	$('input:radio[name=spriteset]').change(function() {
-		if (this.value == 'spritea') {
-			spriteSet("JS2Classic");
-		}
-		else if (this.value == 'spriteb') {
-			spriteSet("CrapPack");
-		}
-		else if (this.value == 'spritec') {
-			spriteSet("BigData");
-		}
-		else if (this.value == 'sprited') {
-			spriteSet("Aggromaxx");
-		}
-		else if (this.value == 'spritecustom') {
-			spriteSet("CustomSprites");
-		}
-	});
+var spritePacks = {
+	spritea: 'JS2Classic',
+	spriteb: 'CrapPack',
+	spritec: 'BigData',
+	sprited: 'Aggromaxx',
+	spritecustom: 'JS2Classic',
+};
+
+$('input:radio[name=spriteset]').on('change', function () {
+	spriteSet(spritePacks[this.value]);
 });
 
 var mode = [
@@ -169,53 +146,37 @@ var mode = [
 	"lighten"
 ];
 
-var canvas = document.getElementById("dis");
-var ctx = canvas.getContext("2d");
 var pupu = document.getElementById("imgs");
 
-var res = window.SFTEX_RES || 1024;
 var cord = res/2;
-
-var undoCanvas = document.createElement('canvas');
-undoCanvas.width = res;
-undoCanvas.height = res;
-var undoctx = undoCanvas.getContext('2d');
 
 ctx.translate(cord,cord);
 
+var spriteImagesReady;
+var prepareGenerator = async function () {
+	var target = canvas;
+	var pending;
+	do {
+		pending = spriteImagesReady;
+		await pending;
+	} while (canvas === target && pending !== spriteImagesReady);
+};
+
 spriteSet("JS2Classic");
 
-for (i = 0; i < files.length; i++){
-	pupu.innerHTML = pupu.innerHTML + "<img src=\"" + path + "/" + files[i] + "\" id=\"" + files[i] + "\" />";
-}
-
 function spriteSet(dir){
-	$("#imgs").empty();
-
-	if(dir == "CustomSprites"){
-		// 嵌入版没有用户自定义素材目录，退回内置的 Classic 集
-		path = __dirname + "/JS2sprites/JS2Classic";
+	var path = __dirname + '/JS2sprites/' + (dir === 'CustomSprites' ? 'JS2Classic' : dir);
+	var fragment = document.createDocumentFragment();
+	var pending = [];
+	for (let file of fs.readdirSync(path)) {
+		if (!/\.(svg|png)$/i.test(file)) continue;
+		let img = new Image();
+		pending.push(new Promise(function (resolve) {
+			img.onload = img.onerror = resolve;
+		}));
+		img.src = path + '/' + file;
+		fragment.appendChild(img);
 	}
-	else{
-		path = __dirname + "/JS2sprites/" + dir + "";
-	}
-
-	var supported = ["svg","png"];
-
-	files = fs.readdirSync(path);
-
-	files = files.filter(function(file){
-		for(i=0;i<supported.length;i++){
-			if(file.indexOf(supported[i]) !== -1){
-				return true;
-			}
-		}
-	});
-
-	for (i = 0; i < files.length; i++){
-		pupu.innerHTML = pupu.innerHTML + "<img src=\"" + path + "/" + files[i] + "\" id=\"" + files[i] + "\" />";
-	}
-
-	koko = files.length-1;
-
+	pupu.replaceChildren(fragment);
+	spriteImagesReady = Promise.all(pending);
 }

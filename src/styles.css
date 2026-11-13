@@ -4486,36 +4486,42 @@ html.light .rn-tab-ind { background: rgba(46, 134, 168, 0.16); }
    viewport 在放大到 100% 以上时可以横向滚动。 */
 .sftex-page { padding: 0; }
 .sftex-panel { flex: 1 1 0; min-width: 0; padding: 0; gap: 0; overflow: hidden; }
-/* 顶栏控件整体放大到原来的 1.5 倍：字号 12→18px、行高与内边距同比放大，
-   横向内边距略收一点，保证 1440px 窗口下仍能排成一行 */
+/* 顶栏保持紧凑：相对 18px 的放大版整体缩约 30%（顶栏高 53→约 37px），
+   按钮再压小一档（12px / 22px 高），避免「老人模式」观感 */
 .sftex-head {
-  padding: 8px 10px;
+  padding: 6px 8px;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 6px;
+  gap: 4px 5px;
   border-bottom: 1px solid var(--border-panel);
 }
 .sftex-head .btn {
-  padding: 5px 11px;
-  font-size: 18px;
-  line-height: 1.35;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 1.2;
   min-width: 0;
 }
 .sftex-head .btn.tiny {
   margin-left: 0;
-  padding: 5px 12px;
-  font-size: 18px;
-  line-height: 1.35;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 .sftex-nav {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 .sftex-spacer { flex: 1 1 auto; }
+.sftex-export-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+}
 .sftex-size-label {
-  font-size: 18px;
+  font-size: 13px;
   color: var(--text-main);
   opacity: 0.75;
   white-space: nowrap;
@@ -4523,23 +4529,23 @@ html.light .rn-tab-ind { background: rgba(46, 134, 168, 0.16); }
 .sftex-size-select {
   width: auto;
   flex: 0 0 auto;
-  padding: 5px 9px;
-  font-size: 18px;
-  line-height: 1.35;
+  padding: 3px 6px;
+  font-size: 13px;
+  line-height: 1.2;
 }
 .sftex-sep {
   flex: 0 0 1px;
-  height: 27px;
-  margin: 0 5px;
+  height: 19px;
+  margin: 0 4px;
   background: var(--border-panel);
 }
 .sftex-dir {
-  flex: 0 1 110px;
-  max-width: 110px;
+  flex: 0 1 140px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
+  font-size: 11px;
   color: var(--text-main);
   opacity: 0.75;
 }
@@ -4568,11 +4574,21 @@ html.light .rn-tab-ind { background: rgba(46, 134, 168, 0.16); }
   border: 0;
   background: var(--bg-app);
 }
-.sftex-status {
-  min-height: 26px;
-  padding: 5px 15px;
-  font-size: 14px;
-  color: var(--accent-text);
+.sftex-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  padding: 3px 10px;
   border-top: 1px solid var(--border-panel);
 }
+.sftex-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--accent-text);
+}
 .sftex-status.error { color: #e5534f; }
+.sftex-status-row .io-link { flex: none; }
