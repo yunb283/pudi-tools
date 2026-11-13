@@ -1246,10 +1246,10 @@ export function initFlowmap() {
   // 滑杆和数字框是成对的，程序改 value 不会触发 link() 的 input 事件，所以两个 id 都要写。
   // 画布分辨率会清空绘制内容、文件名属于用户输入，两者刻意不参与恢复，避免误触丢失工作成果。
   const DRAW_DEFAULTS = [
-    ['fm-radius', 40], ['fm-radius-num', 40],
+    ['fm-radius', 200], ['fm-radius-num', 200],
     ['fm-strength', 5], ['fm-strength-num', 5],
     ['fm-pressure', 70], ['fm-pressure-num', 70],
-    ['fm-blur', 60], ['fm-blur-num', 60],
+    ['fm-blur', 20], ['fm-blur-num', 20],
     ['fm-feather', 8], ['fm-feather-num', 8],
     ['fm-view-mode', 'flow'],
     ['fm-opacity', 65], ['fm-opacity-num', 65],
@@ -1262,7 +1262,7 @@ export function initFlowmap() {
   const PREVIEW_DEFAULTS = [
     ['fm-speed', 50], ['fm-speed-num', 50],
     ['fm-dist', 30], ['fm-dist-num', 30],
-    ['fm-scale', 100], ['fm-scale-num', 100],
+    ['fm-scale', 200], ['fm-scale-num', 200],
     ['fm-uv-dir', 'u'], ['fm-uv-speed', 0], ['fm-uv-speed-num', 0], ['fm-uv-reverse', false],
     ['fm-tiles', '1'], ['fm-preview-mode', 'flow'],
     ['fm-directx', false], ['fm-tile', false],

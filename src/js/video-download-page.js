@@ -3,6 +3,59 @@ import { createIoButtons } from './io-buttons.js';
 
 const $ = (id) => document.getElementById(id);
 
+// ===== 链接历史 =====
+// WebView2 的原生右键菜单在 main.js 里被整窗屏蔽，链接框自己接管右键与左键：
+// 右键 = 复制 / 剪切 / 粘贴 / 全选，左键 = 重新选取历史链接。
+// 历史存 localStorage，随主题 / 页签偏好一样不写配置文件。
+const HISTORY_KEY = 'pudi.dl.urlHistory.v1';
+const HISTORY_MAX = 30;
+
+function readHistory() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((x) => x && typeof x.url === 'string' && x.url.trim())
+      .slice(0, HISTORY_MAX);
+  } catch (_) {
+    return [];
+  }
+}
+
+function writeHistory(list) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_MAX)));
+  } catch (_) {}
+}
+
+// 解析过的链接进历史：同一条只保留最新一次，最近的排最前
+function pushHistory(url, title = '') {
+  const clean = String(url || '').trim();
+  if (!clean) return;
+  const list = readHistory().filter((x) => x.url !== clean);
+  list.unshift({ url: clean, title: String(title || ''), ts: Date.now() });
+  writeHistory(list);
+}
+
+// 解析成功后补上视频标题，菜单里比一长串 URL 好认
+function updateHistoryTitle(url, title) {
+  if (!title) return;
+  const clean = String(url || '').trim();
+  const list = readHistory();
+  const hit = list.find((x) => x.url === clean);
+  if (!hit || hit.title) return;
+  hit.title = String(title);
+  writeHistory(list);
+}
+
+function historyTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 // yt-dlp 的 codec 字符串 → 一眼能看懂的名字
 function codecLabel(f) {
   const v = (f.vcodec || '').toLowerCase();
@@ -370,7 +423,7 @@ export function initVideoDownload() {
     return f ? formatSelectorFor(f) : 'bv*+ba/b';
   }
 
-  // —— 右键菜单 ——
+  // —— 弹出菜单：格式列表右键、链接框右键编辑、链接框左键历史共用一套容器 ——
   let ctxMenu = null;
   function hideCtxMenu() {
     if (ctxMenu) {
@@ -378,25 +431,43 @@ export function initVideoDownload() {
       ctxMenu = null;
     }
   }
-  function showCtxMenu(x, y, f) {
+  // fill(menu) 负责塞内容；菜单本身的点击不冒泡，免得 document 上的关闭监听误伤
+  function openMenu(x, y, fill, extraClass = '') {
     hideCtxMenu();
     const menu = document.createElement('div');
-    menu.className = 'dl-ctx-menu';
-    const btn = document.createElement('button');
-    btn.textContent = f.vcodec === 'none' ? '下载此音频' : '下载此视频（含音频）';
-    btn.addEventListener('click', (e) => {
+    menu.className = 'dl-ctx-menu' + (extraClass ? ` ${extraClass}` : '');
+    menu.addEventListener('click', (e) => e.stopPropagation());
+    menu.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      hideCtxMenu();
-      ctxFormat = f;
-      refreshChoiceLabel();
-      startDownload();
     });
-    menu.appendChild(btn);
+    fill(menu);
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
-    menu.style.left = `${Math.min(x, window.innerWidth - rect.width - 8)}px`;
-    menu.style.top = `${Math.min(y, window.innerHeight - rect.height - 8)}px`;
+    const left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8));
+    // 纵向放不下时翻到锚点上方
+    const top =
+      y + rect.height + 8 > window.innerHeight
+        ? Math.max(8, y - rect.height - 4)
+        : y;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
     ctxMenu = menu;
+    return menu;
+  }
+  function showCtxMenu(x, y, f) {
+    openMenu(x, y, (menu) => {
+      const btn = document.createElement('button');
+      btn.textContent = f.vcodec === 'none' ? '下载此音频' : '下载此视频（含音频）';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideCtxMenu();
+        ctxFormat = f;
+        refreshChoiceLabel();
+        startDownload();
+      });
+      menu.appendChild(btn);
+    });
   }
   document.addEventListener('click', hideCtxMenu);
   document.addEventListener('keydown', (e) => {
@@ -560,6 +631,7 @@ export function initVideoDownload() {
       setStatus('视频下载仅在桌面版可用');
       return;
     }
+    pushHistory(url); // 解析过的链接进历史，失败也保留，方便改一下重试
     fetchBtn.disabled = true;
     parsing = true;
     setStatus('正在解析视频信息…');
@@ -572,6 +644,7 @@ export function initVideoDownload() {
         cookies_from_browser: null,
       });
       if (token !== parseToken) return; // 清除/取消触发的旧结果，丢弃
+      updateHistoryTitle(url, info.title); // 补上视频标题，历史菜单里更好认
       ctxFormat = null;
       playlistMode = !!(info.entries && info.entries.length);
       playlistEntries = playlistMode
@@ -850,6 +923,212 @@ export function initVideoDownload() {
       fetchBtn.disabled = false;
     }
   }
+
+  // ===== 链接框：右键编辑 / 左键历史 =====
+  // 菜单弹出会让输入框失焦，先把选区记下来，动作执行时再恢复，
+  // 否则「复制」「剪切」拿不到用户框选的那一段。
+  let savedSel = { start: 0, end: 0 };
+  function rememberSelection() {
+    savedSel = {
+      start: urlInput.selectionStart ?? urlInput.value.length,
+      end: urlInput.selectionEnd ?? urlInput.value.length,
+    };
+  }
+  function restoreSelection() {
+    urlInput.focus();
+    try {
+      urlInput.setSelectionRange(savedSel.start, savedSel.end);
+    } catch (_) {}
+  }
+  function replaceSelection(text) {
+    const { start, end } = savedSel;
+    urlInput.value = urlInput.value.slice(0, start) + text + urlInput.value.slice(end);
+    const caret = start + text.length;
+    urlInput.focus();
+    try {
+      urlInput.setSelectionRange(caret, caret);
+    } catch (_) {}
+    urlInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  async function copySelection(cut) {
+    const text = urlInput.value.slice(savedSel.start, savedSel.end);
+    if (!text) {
+      setStatus(cut ? '没有选中的文字可剪切' : '没有选中的文字可复制');
+      return;
+    }
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
+    } catch (_) {}
+    if (!ok) {
+      // 剪贴板 API 在部分 WebView2 环境会被权限挡住，退回老式命令（要求选区还在）
+      restoreSelection();
+      try {
+        ok = document.execCommand('copy');
+      } catch (_) {}
+    }
+    if (!ok) {
+      setStatus(`复制失败，请按 ${cut ? 'Ctrl+X' : 'Ctrl+C'}`);
+      return;
+    }
+    if (cut) replaceSelection('');
+    else restoreSelection();
+    setStatus(cut ? '已剪切选中文字' : '已复制到剪贴板');
+  }
+
+  async function pasteFromClipboard() {
+    let text = '';
+    try {
+      if (navigator.clipboard?.readText) text = await navigator.clipboard.readText();
+    } catch (_) {}
+    if (!text) {
+      // 读不到剪贴板时不能凭空造内容；原生 Ctrl+V 一直是可用的兜底
+      restoreSelection();
+      setStatus('无法读取剪贴板，请按 Ctrl+V 粘贴');
+      return;
+    }
+    replaceSelection(text);
+    setStatus('已粘贴到链接框');
+  }
+
+  function menuSeparator(menu) {
+    const sep = document.createElement('div');
+    sep.className = 'dl-menu-sep';
+    menu.appendChild(sep);
+  }
+  function menuButton(menu, label, onClick, enabled = true, className = '') {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.disabled = !enabled;
+    if (className) b.className = className;
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hideCtxMenu();
+      onClick();
+    });
+    menu.appendChild(b);
+    return b;
+  }
+
+  function showUrlEditMenu(x, y) {
+    rememberSelection();
+    const hasSel = savedSel.end > savedSel.start;
+    const hasText = urlInput.value.length > 0;
+    openMenu(x, y, (menu) => {
+      menuButton(menu, '复制', () => copySelection(false), hasSel);
+      menuButton(menu, '剪切', () => copySelection(true), hasSel);
+      menuButton(menu, '粘贴', () => pasteFromClipboard());
+      menuSeparator(menu);
+      menuButton(menu, '全选', () => {
+        urlInput.focus();
+        urlInput.select();
+      }, hasText);
+      menuSeparator(menu);
+      menuButton(menu, '链接历史…', () => {
+        showHistoryMenu(urlInput.getBoundingClientRect());
+      });
+    });
+  }
+
+  function showHistoryMenu(rect) {
+    const list = readHistory();
+    openMenu(
+      rect.left,
+      rect.bottom + 4,
+      (menu) => {
+        // 宽度跟着链接框走，定位前就设好，openMenu 才能算准是否越界
+        menu.style.width = `${Math.max(320, Math.min(560, Math.round(rect.width)))}px`;
+        const head = document.createElement('div');
+        head.className = 'dl-menu-head';
+        head.textContent = `链接历史（${list.length}）`;
+        menu.appendChild(head);
+
+        if (!list.length) {
+          const empty = document.createElement('div');
+          empty.className = 'dl-history-empty';
+          empty.textContent = '暂无历史记录 · 解析过的链接会记在这里';
+          menu.appendChild(empty);
+          return;
+        }
+
+        const scroller = document.createElement('div');
+        scroller.className = 'dl-history-list';
+        for (const item of list) {
+          const row = document.createElement('div');
+          row.className = 'dl-history-item';
+
+          const pick = document.createElement('button');
+          pick.type = 'button';
+          pick.className = 'dl-history-pick';
+          const title = document.createElement('span');
+          title.className = 'dl-h-title';
+          title.textContent = item.title || '(未命名链接)';
+          const url = document.createElement('span');
+          url.className = 'dl-h-url';
+          url.textContent = item.url;
+          url.title = item.url;
+          const meta = document.createElement('span');
+          meta.className = 'dl-h-time';
+          meta.textContent = historyTime(item.ts);
+          pick.append(title, url, meta);
+          pick.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hideCtxMenu();
+            urlInput.value = item.url;
+            urlInput.focus();
+            try {
+              urlInput.setSelectionRange(item.url.length, item.url.length);
+            } catch (_) {}
+            urlInput.dispatchEvent(new Event('input', { bubbles: true }));
+            setStatus(`已填入历史链接：${item.url}`);
+          });
+
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'dl-history-del';
+          del.textContent = '×';
+          del.title = '从历史中移除';
+          del.addEventListener('click', (e) => {
+            e.stopPropagation();
+            writeHistory(readHistory().filter((x) => x.url !== item.url));
+            showHistoryMenu(rect); // 重绘，删空了就显示空态
+          });
+
+          row.append(pick, del);
+          scroller.appendChild(row);
+        }
+        menu.appendChild(scroller);
+        menuSeparator(menu);
+        menuButton(menu, '清空历史记录', () => {
+          writeHistory([]);
+          setStatus('已清空链接历史');
+          showHistoryMenu(rect);
+        }, true, 'dl-menu-danger');
+      },
+      'dl-history-menu'
+    );
+  }
+
+  urlInput.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // 不让 main.js 的整窗屏蔽把自定义菜单一起吞掉
+    showUrlEditMenu(e.clientX, e.clientY);
+  });
+  urlInput.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // 再点一次链接框就收起历史菜单，方便直接编辑文字
+    if (ctxMenu && ctxMenu.classList.contains('dl-history-menu')) {
+      hideCtxMenu();
+      return;
+    }
+    showHistoryMenu(urlInput.getBoundingClientRect());
+  });
+  urlInput.addEventListener('input', hideCtxMenu);
 
   fetchBtn.addEventListener('click', fetchInfo);
 

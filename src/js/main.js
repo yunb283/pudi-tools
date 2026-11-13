@@ -16,6 +16,7 @@ import { initShutdown } from './shutdown-page.js';
 import { initFlipClock } from './clock-page.js';
 import { initFlowmap } from './flowmap-page.js';
 import { initModelPage } from './model-page.js';
+import { initRenamePage } from './rename-page.js';
 import {
   onGlobalDrop,
   isSupportedName,
@@ -240,6 +241,7 @@ const shutdownApi = initShutdown();
 initFlipClock();
 const flowmapApi = initFlowmap();
 const modelApi = initModelPage();
+const renameApi = initRenamePage();
 
 // 两行封顶的那几行（各页状态行、GIF 页信息行）只显示两行，超出省略号；
 // 完整文字挂到 title 上，鼠标悬停看全文
@@ -267,7 +269,7 @@ const tabs = [
   ['pdf', tabPdf, pagePdf, []],
   ['word', tabWord, pageWord, []],
   ['clock', tabClock, pageClock, []],
-  ['rename', tabRename, pageRename, []],
+  ['rename', tabRename, pageRename, [renameApi]],
   ['sysinfo', tabSysInfo, pageSysInfo, []],
   ['shutdown', tabShutdown, pageShutdown, []],
 ];
@@ -988,6 +990,11 @@ themeBtn.addEventListener('click', (ev) => {
 });
 
 onGlobalDrop((entries) => {
+  // 批量重命名页：接受任意文件 / 文件夹，谁在前台就交给谁（放最前，类型不再过滤）
+  if (!pageRename.classList.contains('hidden')) {
+    renameApi.importPaths(entries);
+    return;
+  }
   if (!pageWord.classList.contains('hidden')) {
     wordApi.addEntries(entries);
     return;

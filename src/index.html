@@ -1769,8 +1769,13 @@
             type="text"
             id="dl-url"
             placeholder="粘贴视频链接(YouTube、Bilibili 等上千个站点)"
+            title="左键点击弹出链接历史；右键可复制 / 剪切 / 粘贴"
+            autocomplete="off"
           />
           <button class="btn small" id="dl-fetch">解析</button>
+        </div>
+        <div class="dim-label" style="font-size: 11px; padding: 4px 2px 0; opacity: 0.75">
+          左键点击链接框查看 / 选取历史记录，右键可复制、剪切、粘贴；解析过的链接自动记入历史（本机保存）。
         </div>
         <div
           class="canvas-wrap"
@@ -2321,27 +2326,257 @@
     </div>
 
     <div class="page hidden" id="page-rename">
-      <div class="panel" style="flex: 1 1 0; min-width: 0">
+      <!-- 左：规则面板，一次显示一组 -->
+      <div class="panel rn-rules">
         <div class="panel-head">
-          <span class="panel-title">批量重命名</span>
+          <span class="panel-title" id="rn-rule-title">整体</span>
         </div>
-        <div
-          class="canvas-wrap"
-          style="display: flex; align-items: center; justify-content: center"
-        >
-          <span class="dim-label">这一页还是空壳，功能没接</span>
+        <div class="rn-preset-bar">
+          <select id="rn-presetList" title="已保存的规则预设"><option value="">— 当前 —</option></select>
+          <button class="btn tiny" id="rn-presetSave">保存</button>
+          <button class="btn tiny" id="rn-presetSaveAs">另存为…</button>
+          <button class="btn tiny" id="rn-presetDelete" disabled>删除</button>
         </div>
-        <button class="btn" id="rename-add" disabled title="功能开发中">
-          添加文件…
-        </button>
-        <div class="status" id="rename-status"></div>
-        <div class="help-label">
-          计划支持:一次导入多个文件,按「前缀 + 序号」「查找替换」「按日期 /
-          按原路径」这类规则改名,<br />
-          执行前先列出「原名 →
-          新名」的对照预览,确认后才落盘。冲突、非法字符、改完重名都会先拦下来。
+        <div class="rn-tabs" id="rn-tabs">
+          <span class="rn-tab-ind" id="rn-tab-ind" aria-hidden="true"></span>
+          <button class="rn-tab active" data-group="overall">整体</button>
+          <button class="rn-tab" data-group="replace">替换</button>
+          <button class="rn-tab" data-group="add">添加</button>
+          <button class="rn-tab" data-group="remove">删除</button>
+          <button class="rn-tab" data-group="seq">序号</button>
+          <button class="rn-tab" data-group="template">模板</button>
+          <button class="rn-tab" data-group="options">选项</button>
+        </div>
+        <div class="rn-rule-body" id="rn-rule-body">
+          <!-- 整体 -->
+          <section class="rn-group" data-group="overall">
+            <div class="rn-group-title">文件名</div>
+            <div class="rn-radio-grid">
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="keep" checked />保持不变</label>
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="upper" />全部大写</label>
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="lower" />全部小写</label>
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="title" />首字母大写</label>
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="random" />随机数</label>
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="increase" />数字递增</label>
+              <label class="rn-opt"><input type="radio" name="rn-nameMode" value="prefixNum" />前缀+数字</label>
+            </div>
+            <div class="rn-row" id="rn-inc-row" hidden>
+              <label class="rn-field"><span>递增起始</span><input type="number" id="rn-incStart" value="1" min="0" step="1" /></label>
+              <label class="rn-field"><span>位数</span><input type="number" id="rn-incDigits" value="0" min="0" max="9" /></label>
+            </div>
+            <div class="rn-row" id="rn-prefix-row" hidden>
+              <label class="rn-field"><span>前缀</span><input type="text" id="rn-numPrefix" placeholder="如 IMG_" /></label>
+              <label class="rn-field"><span>起始</span><input type="number" id="rn-numStart" value="1" min="0" step="1" /></label>
+              <label class="rn-field"><span>位数</span><input type="number" id="rn-numDigits" value="3" min="0" max="9" /></label>
+            </div>
+            <div class="rn-help" id="rn-num-help" hidden>位数 0 表示不补位；填 3 得到 001、002…</div>
+            <div class="rn-group-title">文本转换</div>
+            <select id="rn-convert">
+              <option value="none">不选择</option>
+              <option value="s2t">简体转繁体</option>
+              <option value="t2s">繁体转简体</option>
+              <option value="n2cn">一二三转123</option>
+              <option value="cn2n">123转一二三</option>
+              <option value="pinyin">汉语转拼音首字母</option>
+            </select>
+            <div class="rn-group-title">扩展名</div>
+            <div class="rn-radio-grid two">
+              <label class="rn-opt"><input type="radio" name="rn-extMode" value="keep" checked />保持不变</label>
+              <label class="rn-opt"><input type="radio" name="rn-extMode" value="upper" />全部大写</label>
+              <label class="rn-opt"><input type="radio" name="rn-extMode" value="lower" />全部小写</label>
+              <label class="rn-opt"><input type="radio" name="rn-extMode" value="del" />删除</label>
+              <label class="rn-opt"><input type="radio" name="rn-extMode" value="to" />改为</label>
+            </div>
+            <div class="rn-row" id="rn-ext-to-row" hidden>
+              <select id="rn-extTo">
+                <option value="mp4">mp4</option>
+                <option value="pdf">pdf</option>
+                <option value="txt">txt</option>
+                <option value="jpg">jpg</option>
+                <option value="png">png</option>
+                <option value="zip">zip</option>
+                <option value="rar">rar</option>
+                <option value="7z">7z</option>
+                <option value="__custom">自定义…</option>
+              </select>
+              <input type="text" id="rn-extToCustom" placeholder="不含点号" hidden />
+            </div>
+            <div class="rn-help">
+              转换按「替换 → 删除 → 序号 → 模板 → 添加 → 大小写 → 文本转换 → 扩展名」的顺序叠加，各页开关互不影响。
+            </div>
+          </section>
+
+          <!-- 替换 -->
+          <section class="rn-group" data-group="replace" hidden>
+            <label class="rn-chk"><input type="checkbox" id="rn-replaceOn" /><span>启用替换</span></label>
+            <label class="rn-field"><span>查找</span><input type="text" id="rn-replaceFind" placeholder="要替换的文字或正则" /></label>
+            <label class="rn-field"><span>替换为</span><input type="text" id="rn-replaceTo" placeholder="留空即删除该文字" /></label>
+            <div class="rn-row">
+              <label class="rn-opt"><input type="checkbox" id="rn-replaceRegex" />正则表达式</label>
+              <label class="rn-opt"><input type="checkbox" id="rn-replaceCase" />区分大小写</label>
+            </div>
+            <div class="rn-group-title">替换范围</div>
+            <div class="rn-radio-grid">
+              <label class="rn-opt"><input type="radio" name="rn-replaceTarget" value="both" checked />主名和扩展名</label>
+              <label class="rn-opt"><input type="radio" name="rn-replaceTarget" value="name" />仅主名</label>
+              <label class="rn-opt"><input type="radio" name="rn-replaceTarget" value="ext" />仅扩展名</label>
+            </div>
+            <div class="rn-help">
+              正则下可用 <code>$1</code> 引用捕获组，如查找 <code>^(\d+)_</code> 替换为 <code>img$1-</code>。
+            </div>
+          </section>
+
+          <!-- 添加 -->
+          <section class="rn-group" data-group="add" hidden>
+            <label class="rn-chk"><input type="checkbox" id="rn-addOn" /><span>启用添加</span></label>
+            <label class="rn-field"><span>前缀</span><input type="text" id="rn-addPrefix" /></label>
+            <label class="rn-field"><span>后缀</span><input type="text" id="rn-addSuffix" /></label>
+            <div class="rn-group-title">添加位置</div>
+            <div class="rn-radio-grid two">
+              <label class="rn-opt"><input type="radio" name="rn-addTarget" value="name" checked />文件名（扩展名前）</label>
+              <label class="rn-opt"><input type="radio" name="rn-addTarget" value="full" />整个文件名（含扩展名）</label>
+            </div>
+          </section>
+
+          <!-- 删除 -->
+          <section class="rn-group" data-group="remove" hidden>
+            <label class="rn-chk"><input type="checkbox" id="rn-removeOn" /><span>启用删除</span></label>
+            <div class="rn-radio-grid two">
+              <label class="rn-opt"><input type="radio" name="rn-removeMode" value="content" checked />按内容</label>
+              <label class="rn-opt"><input type="radio" name="rn-removeMode" value="position" />按位置</label>
+            </div>
+            <div id="rn-remove-content">
+              <label class="rn-field"><span>删除内容</span><input type="text" id="rn-removeContent" /></label>
+              <div class="rn-row">
+                <label class="rn-opt"><input type="checkbox" id="rn-removeRegex" />正则表达式</label>
+                <label class="rn-opt"><input type="checkbox" id="rn-removeCase" />区分大小写</label>
+              </div>
+            </div>
+            <div class="rn-row" id="rn-remove-position" hidden>
+              <label class="rn-field"><span>从第</span><input type="number" id="rn-posFrom" value="1" min="1" /></label>
+              <label class="rn-field"><span>到第</span><input type="number" id="rn-posTo" value="0" min="0" /></label>
+              <span class="rn-help">位置按字符计，结束填 0 表示删到末尾</span>
+            </div>
+          </section>
+
+          <!-- 序号 -->
+          <section class="rn-group" data-group="seq" hidden>
+            <label class="rn-chk"><input type="checkbox" id="rn-seqOn" /><span>启用序号</span></label>
+            <div class="rn-row">
+              <label class="rn-field"><span>起始</span><input type="number" id="rn-seqStart" value="1" /></label>
+              <label class="rn-field"><span>步长</span><input type="number" id="rn-seqStep" value="1" /></label>
+              <label class="rn-field"><span>位数</span><input type="number" id="rn-seqDigits" value="2" min="0" max="9" /></label>
+            </div>
+            <div class="rn-row">
+              <label class="rn-field"><span>补位</span>
+                <select id="rn-seqPad" style="width: 92px">
+                  <option value="0">前导 0</option>
+                  <option value="space">前导空格</option>
+                  <option value="none">不补位</option>
+                </select>
+              </label>
+              <label class="rn-field"><span>分隔符</span><input type="text" id="rn-seqSep" value="_" style="width: 56px" /></label>
+            </div>
+            <div class="rn-group-title">序号位置</div>
+            <div class="rn-radio-grid">
+              <label class="rn-opt"><input type="radio" name="rn-seqPos" value="before" checked />名称前</label>
+              <label class="rn-opt"><input type="radio" name="rn-seqPos" value="after" />名称后</label>
+              <label class="rn-opt"><input type="radio" name="rn-seqPos" value="template" />仅模板引用</label>
+            </div>
+          </section>
+
+          <!-- 模板 -->
+          <section class="rn-group" data-group="template" hidden>
+            <label class="rn-chk"><input type="checkbox" id="rn-tplOn" /><span>启用模板（整名重建）</span></label>
+            <label class="rn-field"><span>模板</span><input type="text" id="rn-tplText" placeholder="{name}_{num}" /></label>
+            <div class="rn-help">
+              可用变量：<code>{name}</code> 已处理的主名 · <code>{ext}</code> 扩展名 · <code>{num}</code> 序号 ·
+              <code>{index}</code> 行号 · <code>{date}</code> 文件修改日期 · <code>{time}</code> 修改时间 ·
+              <code>{mtime}</code> 修改时间戳 · <code>{parent}</code> 所在目录名 · <code>{rand}</code> 6 位随机数
+            </div>
+          </section>
+
+          <!-- 选项 -->
+          <section class="rn-group" data-group="options" hidden>
+            <div class="rn-group-title">过滤（只处理命中的行）</div>
+            <label class="rn-field"><span>关键字</span><input type="text" id="rn-filterKw" placeholder="留空不过滤" /></label>
+            <label class="rn-field"><span>扩展名</span><input type="text" id="rn-filterExt" placeholder="如 png, jpg" /></label>
+            <div class="rn-group-title">导入</div>
+            <label class="rn-chk"><input type="checkbox" id="rn-importRecursive" /><span>导入文件夹时一并纳入子文件夹</span></label>
+            <div class="rn-group-title">执行</div>
+            <label class="rn-chk"><input type="checkbox" id="rn-confirmExec" checked /><span>改名前弹出确认</span></label>
+            <label class="rn-chk"><input type="checkbox" id="rn-skipConflict" checked /><span>存在重名冲突时拒绝执行</span></label>
+            <div class="rn-help">
+              撤销/重做保存在本地，关闭程序后仍可恢复；每次执行改名都会留下一条可撤销记录。
+            </div>
+          </section>
         </div>
       </div>
+
+      <!-- 右：文件列表，实时预览 -->
+      <div class="panel rn-list">
+        <div class="panel-head">
+          <span class="panel-title" id="rn-listTitle">文件列表</span>
+          <label class="rn-sort-ctl"><span>排序</span>
+            <select id="rn-sortBy" title="排序方式">
+              <option value="none">默认</option>
+              <option value="name">名称</option>
+              <option value="mtime">日期</option>
+              <option value="type">类型</option>
+              <option value="size">大小</option>
+            </select>
+          </label>
+          <button class="btn tiny rn-sort-dir" id="rn-sortDir" title="升序 / 降序" disabled>↑</button>
+          <button class="btn tiny" id="rn-btnSelectAll">全选</button>
+          <button class="btn tiny" id="rn-btnInvert">反选</button>
+          <button class="btn tiny" id="rn-btnImportFiles">导入文件</button>
+          <button class="btn tiny" id="rn-btnImportDir">导入文件夹</button>
+          <button class="btn tiny" id="rn-btnClear">清空</button>
+        </div>
+        <div class="rn-table-wrap" id="rn-tableWrap">
+          <table class="rn-files">
+            <thead>
+              <tr>
+                <th class="col-chk"></th>
+                <th class="col-idx">序号</th>
+                <th>原文件名</th>
+                <th>新文件名</th>
+                <th class="col-status">状态</th>
+                <th class="col-ext">扩展名</th>
+                <th class="col-size">大小</th>
+                <th class="col-path">路径</th>
+              </tr>
+            </thead>
+            <tbody id="rn-tbody"></tbody>
+          </table>
+          <div class="rn-empty-hint" id="rn-emptyHint">
+            <div>拖入文件或文件夹到这里，或用右上角「导入」按钮选择</div>
+            <div class="rn-help">改名规则在左侧各页设置，所有启用的规则会同时叠加，新文件名实时预览</div>
+          </div>
+        </div>
+        <div class="rn-foot">
+          <div class="rn-status" id="rn-status"></div>
+          <button class="btn" id="rn-btnUndo" disabled>撤销</button>
+          <button class="btn" id="rn-btnRedo" disabled>重做</button>
+          <button class="btn primary" id="rn-btnExec" disabled>执行改名</button>
+        </div>
+      </div>
+
+      <div class="rn-modal-scrim" id="rn-modalScrim" hidden>
+        <div class="rn-modal" role="dialog" aria-modal="true" aria-labelledby="rn-modalTitle">
+          <div class="rn-modal-title" id="rn-modalTitle"></div>
+          <div class="rn-modal-body">
+            <input class="rn-modal-input" id="rn-modalInput" type="text" hidden />
+            <div class="rn-modal-text" id="rn-modalText" hidden></div>
+          </div>
+          <div class="rn-modal-actions">
+            <button class="btn" id="rn-modalCancel" hidden>取消</button>
+            <button class="btn primary" id="rn-modalOk">确定</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rn-toast" id="rn-toast"></div>
     </div>
 
     <div class="page hidden" id="page-sysinfo">
@@ -2531,8 +2766,8 @@
             <div class="form-grid">
               <label>笔刷大小</label>
               <div class="dual-row">
-                <input type="range" id="fm-radius" min="5" max="200" step="1" value="40" />
-                <input type="number" id="fm-radius-num" min="5" max="200" step="1" value="40" />
+                <input type="range" id="fm-radius" min="5" max="200" step="1" value="200" />
+                <input type="number" id="fm-radius-num" min="5" max="200" step="1" value="200" />
               </div>
               <label>流动强度</label>
               <div class="dual-row">
@@ -2546,8 +2781,8 @@
               </div>
               <label title="按住 Shift 或切到「柔化」工具时生效">柔化强度</label>
               <div class="dual-row">
-                <input type="range" id="fm-blur" min="1" max="100" step="1" value="60" />
-                <input type="number" id="fm-blur-num" min="1" max="100" step="1" value="60" />
+                <input type="range" id="fm-blur" min="1" max="100" step="1" value="20" />
+                <input type="number" id="fm-blur-num" min="1" max="100" step="1" value="20" />
               </div>
               <label for="fm-direction">流向</label>
               <select id="fm-direction">
@@ -2694,8 +2929,8 @@
           </div>
           <label>底图缩放</label>
           <div class="dual-row">
-            <input type="range" id="fm-scale" min="100" max="200" step="1" value="100" />
-            <input type="number" id="fm-scale-num" min="100" max="200" step="1" value="100" />
+            <input type="range" id="fm-scale" min="100" max="200" step="1" value="200" />
+            <input type="number" id="fm-scale-num" min="100" max="200" step="1" value="200" />
           </div>
           <label>平铺次数</label>
           <select id="fm-tiles">

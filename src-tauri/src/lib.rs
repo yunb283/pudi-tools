@@ -458,6 +458,138 @@ async fn make_dir(path: String) -> Result<String, String> {
     .map_err(|e| format!("任务执行异常：{e}"))?
 }
 
+// ===================== 批量重命名 =====================
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PathStat {
+    pub path: String,
+    pub name: String,
+    pub size: u64,
+    pub mtime: i64,
+    pub is_dir: bool,
+}
+
+// 取单个路径的信息：大小 / 修改时间（秒）/ 是否目录。读不到元数据也不报错，填零值。
+fn stat_one(path: &str) -> PathStat {
+    let p = Path::new(path);
+    let name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let (size, mtime, is_dir) = match fs::metadata(p) {
+        Ok(m) => (
+            m.len(),
+            m.modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0),
+            m.is_dir(),
+        ),
+        Err(_) => (0, 0, false),
+    };
+    PathStat { path: path.to_string(), name, size, mtime, is_dir }
+}
+
+// 选择任意文件（不限定扩展名）。multi=false 时只选一个；exts 为空表示所有文件。
+#[tauri::command]
+async fn pick_files(
+    app: tauri::AppHandle,
+    multi: bool,
+    exts: Option<Vec<String>>,
+    title: Option<String>,
+    label: Option<String>,
+) -> Option<Vec<String>> {
+    let list = exts.unwrap_or_default();
+    let refs: Vec<&str> = list.iter().map(|s| s.as_str()).collect();
+    let dlg_title = title.unwrap_or_else(|| "选择文件".to_string());
+    let filter = label.unwrap_or_else(|| "所有文件".to_string());
+    let (tx, rx) = mpsc::channel();
+    if multi {
+        let mut b = app.dialog().file().set_title(dlg_title.clone());
+        if !refs.is_empty() {
+            b = b.add_filter(filter.as_str(), &refs);
+        }
+        b.pick_files(move |paths| {
+            let _ = tx.send(paths.map(|v| v.into_iter().map(file_path_to_string).collect()));
+        });
+    } else {
+        let mut b = app.dialog().file().set_title(dlg_title.clone());
+        if !refs.is_empty() {
+            b = b.add_filter(filter.as_str(), &refs);
+        }
+        b.pick_file(move |path| {
+            let _ = tx.send(path.map(|p| vec![file_path_to_string(p)]));
+        });
+    }
+    tauri::async_runtime::spawn_blocking(move || rx.recv().ok().flatten())
+        .await
+        .ok()
+        .flatten()
+}
+
+// 批量取文件信息：大小 / 修改时间 / 是否目录
+#[tauri::command]
+async fn stat_paths(paths: Vec<String>) -> Vec<PathStat> {
+    paths.iter().map(|p| stat_one(p)).collect()
+}
+
+// 列出目录内（递归可选）的所有文件，目录本身不计入
+#[tauri::command]
+async fn list_dir(dir: String, recursive: bool) -> Result<Vec<PathStat>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<PathStat>, String> {
+        let mut out = Vec::new();
+        let mut stack = vec![PathBuf::from(&dir)];
+        while let Some(cur) = stack.pop() {
+            let entries = match fs::read_dir(&cur) {
+                Ok(e) => e,
+                Err(e) => return Err(format!("无法读取目录 {}：{e}", cur.display())),
+            };
+            for entry in entries {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let p = entry.path();
+                if p.is_dir() {
+                    if recursive {
+                        stack.push(p);
+                    }
+                    continue;
+                }
+                if let Some(s) = p.to_str() {
+                    out.push(stat_one(s));
+                }
+            }
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("任务执行异常：{e}"))?
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RenameOp {
+    pub old: String,
+    pub new: String,
+}
+
+// 批量重命名：对每个 op 执行 fs::rename(old -> new)，返回实际成功的部分（供前端撤销 / 重做）。
+// 源不存在或目标已存在（前端已做冲突检测，这里只是兜底）则跳过。
+#[tauri::command]
+async fn rename_batch(ops: Vec<RenameOp>) -> Vec<RenameOp> {
+    let mut done = Vec::new();
+    for op in ops {
+        if !Path::new(&op.old).exists() || Path::new(&op.new).exists() {
+            continue;
+        }
+        if fs::rename(&op.old, &op.new).is_ok() {
+            done.push(op);
+        }
+    }
+    done
+}
+
 // ===================== 视频转换（内置 ffmpeg） =====================
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -2323,6 +2455,10 @@ pub fn run() {
             list_files,
             make_dir,
             open_path,
+            pick_files,
+            stat_paths,
+            list_dir,
+            rename_batch,
             locate_ffmpeg,
             ffprobe_video,
             keyframe_times,
