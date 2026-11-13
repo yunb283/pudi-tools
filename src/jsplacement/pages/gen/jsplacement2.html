@@ -1,0 +1,160 @@
+<div class="canvasbox">
+	<div class="viewcontrols disabled">
+		<a href="#" onclick="showHeight(1);">高度图</a>
+		<a href="#" onclick="showHeight(0);">着色图</a>
+	</div>
+	<div class="canvasboxinner">
+		<canvas id="dis" generated="nope" width="1024" height="1024" onclick="refresh()">
+		</canvas>
+		<canvas id="dat" width="1024" height="1024" onclick="refresh()">
+		</canvas>
+	</div>
+</div>
+
+
+
+<div class="editorbox" onclick="hideColorizer();">
+
+	<!-- Radio (Sprite sets) -->
+	<div class="spritesets">
+
+		<div class="spriteset">
+			<label for="spritea">经典素材组</label>
+			<input type="radio" id="spritea" name="spriteset" value="spritea" onchange="refresh()" checked="checked">
+			<div class="check"></div>
+		</div>
+
+		<div class="sliderspacer"></div>
+
+		<div class="spriteset">
+			<label for="spriteb">杂锦素材组</label>
+			<input type="radio" id="spriteb" name="spriteset" value="spriteb" onchange="refresh()">
+			<div class="check"></div>
+		</div>
+
+		<div class="sliderspacer"></div>
+
+		<div class="spriteset">
+			<label for="spritec">大数据素材组</label>
+			<input type="radio" id="spritec" name="spriteset" value="spritec" onchange="refresh()">
+			<div class="check"></div>
+		</div>
+
+		<div class="spriteset">
+			<label for="sprited">激进素材组</label>
+			<input type="radio" id="sprited" name="spriteset" value="sprited" onchange="refresh()">
+			<div class="check"></div>
+		</div>
+
+		<div class="sliderspacer"></div>
+
+		<!-- 嵌入版没有本地自定义素材目录，这一项隐藏（原 Electron 版依赖 ~/JSplacement/CustomSprites） -->
+		<div class="spriteset" style="display:none">
+			<label for="spritecustom">自定义精灵</label>
+			<input type="radio" id="spritecustom" name="spriteset" value="spritecustom" onchange="refresh()">
+			<div class="check"></div>
+		</div>
+
+		<div style="clear:both"></div>
+		<div class="horispacer"></div>
+	</div>
+
+	<!-- Sliders -->
+	<div class="horispacer"></div>
+
+	<div class="sliderbox2w">
+		<div class="values">背景亮度 <output id="bgcol">128</output></div>
+		<div class="slider"><input type="range" value="128" min="0" max="255" step="1" oninput="setValue('#bgcol',value)" onchange="refresh()"></div>
+	</div>
+	<div class="sliderspacer"></div>
+	<div class="sliderbox2w">
+		<div class="values">背景迭代次数 <output id="bgits">3</output></div>
+		<div class="slider"><input type="range" value="3" min="0" max="4" step="1" oninput="setValue('#bgits',value)" onchange="refresh()"></div>
+	</div>
+
+	<div class="sliderbox2w">
+		<div class="values">迭代次数 <output id="iterations">125</output></div>
+		<div class="slider"><input type="range" value="125" min="10" max="500" step="5" oninput="setValue('#iterations',value)" onchange="refresh()"></div>
+	</div>
+	<div class="sliderspacer"></div>
+	<div class="sliderbox2w">
+		<div class="values">精灵缩放 <output id="minsize">60</output></div>
+		<div class="slider"><input type="range" value="60" min="1" max="120" step="1" oninput="setValue('#minsize',value)" onchange="refresh()"></div>
+	</div>
+
+	<div style="clear:both"></div>
+	<div class="horispacer"></div>
+
+	<!-- Switches -->
+
+	<div class="switchbox4w">
+		<div class="switchname">无缝平铺</div>
+		<div class="switch">
+			<input type="checkbox" id="seamlsmode" value="1" checked="checked">
+			<label for="seamlsmode"></label>
+		</div>
+	</div>
+
+	<div class="switchbox4w">
+		<div class="switchname">随机旋转精灵</div>
+		<div class="switch">
+			<input type="checkbox" id="rotatemode" value="1" checked="checked">
+			<label for="rotatemode"></label>
+		</div>
+	</div>
+
+	<div class="switchbox4w">
+		<div class="switchname">随机翻转精灵</div>
+		<div class="switch">
+			<input type="checkbox" id="mirrormode" value="1" checked="checked">
+			<label for="mirrormode"></label>
+		</div>
+	</div>
+
+	<div class="switchbox4w">
+		<div class="switchname">混合精灵</div>
+		<div class="switch">
+			<input type="checkbox" id="blendimode" value="1" checked="checked">
+			<label for="blendimode"></label>
+		</div>
+	</div>
+
+	<div style="clear:both"></div>
+
+</div>
+
+<div id="colorizer" class="hidden">
+
+</div>
+
+<div class="actionbox">
+	<a href="#" class="generate" onclick="refresh()">生成</a>
+	<a href="#" class="height disabled" onclick="saveHeight(savename)">保存高度图</a>
+	<a href="#" class="undo disabled" onclick="undoMap()">撤销</a>
+	<a href="#" class="invert disabled" onclick="invertMap()">反相</a>
+	<a href="#" class="normal disabled" onclick="saveNormal(savename)">保存法线图</a>
+	<a href="#" class="colorize disabled" onclick='toggleColorizer()'>渐变着色</a>
+	<a href="#" class="color disabled" onclick="saveColor(savename)">保存着色图</a>
+</div>
+
+
+<div id="imgs"></div>
+
+
+<script>
+	function setValue(id,value) {
+		document.querySelector(id).value = value;
+	}
+</script>
+<script src="req/js/gen/common/common.js"></script>
+<script src="req/js/gen/common/colorizer.js"></script>
+<script src="req/js/gen/js-2/js-2.js"></script>
+<script>
+	var savename = "JS-2-";
+	var seamlsmode;
+	var timestamp;
+	var guidepage = "js2";
+	$(function() {
+		$("#colorizer").load("pages/gradients.html");
+	});
+</script>

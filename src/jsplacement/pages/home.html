@@ -1,0 +1,81 @@
+<div class="panel sf-left">
+  <div class="panel-head">
+    <span class="panel-title">选择生成器</span>
+    <span class="sf-hint">共 5 种</span>
+  </div>
+  <div class="sf-home-list">
+    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/jsplacement.html');return false;">
+      <strong>经典版 · 几何块面</strong>
+      <span>矩形、网格与线条堆叠，内置 6 组预设，可随机化全部参数</span>
+    </a>
+    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/jsplacement2.html');return false;">
+      <strong>精灵 2 · SVG 拼贴</strong>
+      <span>四套矢量精灵随机拼贴，可调缩放、旋转、翻转与无缝平铺</span>
+    </a>
+    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/velvet.html');return false;">
+      <strong>柔面 · 对称曲面</strong>
+      <span>柔和曲面与细密纹理，支持 X / Y 对称与分割器叠加</span>
+    </a>
+    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/wyre.html');return false;">
+      <strong>走线 · 线框电路</strong>
+      <span>多层折线走线，可调层色、线宽与八个步进方向</span>
+    </a>
+    <a href="#" class="sf-home-card" onclick="hideMenu();unload();loadPage('gen/dotgrid.html');return false;">
+      <strong>点阵 · 规则网格</strong>
+      <span>六种点形与七种图案组合，按概率在网格上排布</span>
+    </a>
+  </div>
+</div>
+
+<div class="panel sf-right sf-wide sf-doc">
+  <div class="panel-head">
+    <span class="panel-title">使用说明</span>
+    <span class="sf-hint">全部在本机完成，不上传任何数据</span>
+  </div>
+  <h2>科幻纹理生成</h2>
+  <p>
+    按页签顶部「尺寸」所选边长（默认 1024 × 1024）程序化生成灰度置换高度图，可直接用于三维软件里的置换、法线烘焙，
+    或当作遮罩、渐变着色贴图使用。左侧选择生成器，右侧即可实时预览与导出。
+  </p>
+
+  <h3>快速上手</h3>
+  <p>
+    ① 在左侧选一个生成器 → ② 调整左栏参数 → ③ 点「生成」→ ④ 用下方按钮导出
+    高度图 / 法线图 / 着色图。点击预览画布也会重新生成一张。
+  </p>
+
+  <h3>快捷键</h3>
+  <div class="sf-kv">
+    <span>1 – 5</span><span>依次切换五个生成器</span>
+    <span>H</span><span>回到本页</span>
+    <span>R</span><span>重新生成</span>
+    <span>S</span><span>保存高度图</span>
+    <span>I</span><span>反相</span>
+    <span>G</span><span>打开数字指南</span>
+    <span>M</span><span>打开菜单</span>
+  </div>
+
+  <h3>关于导出</h3>
+  <p>
+    导出的 PNG 由工具箱统一写出：请在页签上方的「输出目录」里指定文件夹；
+    未设置时第一次导出会弹出目录选择框。三种导出分别是高度图（灰度置换）、
+    法线图（由高度图换算）和着色图（需要先在「渐变着色」里选一张渐变）。
+  </p>
+  <p>
+    尺寸越大越占用内存：默认 1024 × 1024 很轻量，选到 8192 × 8192 时与原版一致，一次生成会明显变慢。切换尺寸后需要重新点「生成」。
+  </p>
+
+  <h3>来源</h3>
+  <p>
+    本页移植自 JSPlacement（原作者 Windmill）的网页版本。
+    原作版权归 Windmill 所有，网页移植仓库未附带明确的开源许可证；
+    分发包含本功能的软件包前请先确认授权。
+  </p>
+</div>
+
+<script src="req/js/sys/jsunloader.js"></script>
+<script>
+	// gitGuide() 与导出文件名都依赖这两个全局，别删
+	var guidepage = "index";
+	var savename = "";
+</script>

@@ -4480,3 +4480,99 @@ html.fc-fullscreen .page {
 .rn-toast.err { border-color: #e5534f; color: #ff9a9a; }
 
 html.light .rn-tab-ind { background: rgba(46, 134, 168, 0.16); }
+
+/* ===== 科幻纹理生成（JSPlacementWeb 独立 iframe） =====
+   原应用把窗口写死成 1280×800，宿主用 stage + transform: scale() 整体缩放；
+   viewport 在放大到 100% 以上时可以横向滚动。 */
+.sftex-page { padding: 0; }
+.sftex-panel { flex: 1 1 0; min-width: 0; padding: 0; gap: 0; overflow: hidden; }
+/* 顶栏控件整体放大到原来的 1.5 倍：字号 12→18px、行高与内边距同比放大，
+   横向内边距略收一点，保证 1440px 窗口下仍能排成一行 */
+.sftex-head {
+  padding: 8px 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 6px;
+  border-bottom: 1px solid var(--border-panel);
+}
+.sftex-head .btn {
+  padding: 5px 11px;
+  font-size: 18px;
+  line-height: 1.35;
+  min-width: 0;
+}
+.sftex-head .btn.tiny {
+  margin-left: 0;
+  padding: 5px 12px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.sftex-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sftex-spacer { flex: 1 1 auto; }
+.sftex-size-label {
+  font-size: 18px;
+  color: var(--text-main);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.sftex-size-select {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.sftex-sep {
+  flex: 0 0 1px;
+  height: 27px;
+  margin: 0 5px;
+  background: var(--border-panel);
+}
+.sftex-dir {
+  flex: 0 1 110px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  color: var(--text-main);
+  opacity: 0.75;
+}
+/* 导出按钮稍作强调，和「输出目录」形成一组操作 */
+.sftex-export {
+  border-color: var(--cyan);
+  color: var(--cyan-text3);
+}
+.sftex-export:hover {
+  border-color: var(--cyan);
+}
+.sftex-viewport {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--bg-app);
+}
+/* 嵌入版已改成工具箱自己的左右两栏响应式布局，不再需要 1280×800 缩放舞台 */
+.sftex-stage { position: absolute; inset: 0; }
+.sftex-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg-app);
+}
+.sftex-status {
+  min-height: 26px;
+  padding: 5px 15px;
+  font-size: 14px;
+  color: var(--accent-text);
+  border-top: 1px solid var(--border-panel);
+}
+.sftex-status.error { color: #e5534f; }

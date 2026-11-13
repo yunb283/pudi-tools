@@ -1,0 +1,59 @@
+<div class="panel sf-left sf-wide sf-doc">
+  <div class="panel-head">
+    <span class="panel-title">设置</span>
+    <span class="sf-hint">仅影响本生成器，工具箱其它页不受影响</span>
+  </div>
+
+  <div class="sf-setting">
+    <div class="sf-setting-title">导出文件名的时间戳格式</div>
+    <div class="radiobox3w">
+      <input type="radio" id="timestampFormat0" name="timestampFormat" value="0" onchange="saveNewSetting($(this).attr('name'))">
+      <label for="timestampFormat0">UNIX 秒数</label>
+      <div class="check"></div>
+    </div>
+    <div class="radiobox3w">
+      <input type="radio" id="timestampFormat1" name="timestampFormat" value="1" onchange="saveNewSetting($(this).attr('name'))">
+      <label for="timestampFormat1">完整日期</label>
+      <div class="check"></div>
+    </div>
+    <div class="radiobox3w">
+      <input type="radio" id="timestampFormat2" name="timestampFormat" value="2" onchange="saveNewSetting($(this).attr('name'))">
+      <label for="timestampFormat2">紧凑日期</label>
+      <div class="check"></div>
+    </div>
+    <div id="showtime"></div>
+  </div>
+
+  <div class="sf-setting">
+    <div class="sf-setting-title">界面主题</div>
+    <p>
+      深 / 浅色由工具箱统一切换，本页会自动跟随，无需单独设置。
+      下面两个选项保留给生成器自身的配置，不再改变样式表。
+    </p>
+    <div hidden>
+      <div class="radiobox3w">
+        <input type="radio" id="skin0" name="skin" value="0" onchange="saveNewSetting($(this).attr('name'))">
+        <label for="skin0">深色</label>
+        <div class="check"></div>
+      </div>
+      <div class="radiobox3w">
+        <input type="radio" id="skin1" name="skin" value="1" onchange="saveNewSetting($(this).attr('name'))">
+        <label for="skin1">浅色</label>
+        <div class="check"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sf-setting">
+    <div class="sf-setting-title">其它</div>
+    <label class="chk"><input type="checkbox" id="skipSplashScreen" onchange="saveNewSetting($(this).attr('id'))"><span>跳过启动画面（嵌入版已停用）</span></label>
+    <label class="chk"><input type="checkbox" id="disableUpdateCheck" onchange="saveNewSetting($(this).attr('id'))"><span>关闭版本检查（嵌入版本来就不联网检查）</span></label>
+    <label class="chk"><input type="checkbox" id="disableAnimations" onchange="saveNewSetting($(this).attr('id'))"><span>关闭界面动效（低配机器可勾）</span></label>
+  </div>
+</div>
+
+<script src="req/js/sys/jsunloader.js"></script>
+<script src="req/js/sys/settings.js"></script>
+<script>
+	var guidepage = "index";
+</script>

@@ -356,6 +356,7 @@
       <button class="tab" id="tab-convert">图片格式转换</button>
       <button class="tab" id="tab-normal">贴图转法线</button>
       <button class="tab" id="tab-seamless">无缝贴图</button>
+      <button class="tab" id="tab-sftex">科幻纹理生成</button>
       <button class="tab" id="tab-flowmap">Flowmap绘制</button>
       <button class="tab" id="tab-model">模型预览</button>
       <button class="tab" id="tab-gif">制作GIF</button>
@@ -881,6 +882,50 @@
         </div>
         <div class="help-label" id="sml-heat-hint" hidden>亮线标出差异，黄色比红色更明显。</div>
         <div class="io-row end" id="sml-io"></div>
+      </div>
+    </div>
+
+    <!-- 科幻纹理生成：JSPlacementWeb 跑在独立 iframe 里，避免它那套全局变量污染宿主 -->
+    <div class="page hidden sftex-page" id="page-sftex">
+      <div class="panel sftex-panel">
+        <div class="panel-head sftex-head" id="sftex-head">
+          <div class="sftex-nav" id="sftex-nav">
+            <button class="btn small" type="button" data-sf-page="home.html">首页</button>
+            <button class="btn small" type="button" data-sf-page="gen/jsplacement.html">经典版</button>
+            <button class="btn small" type="button" data-sf-page="gen/jsplacement2.html">精灵 2</button>
+            <button class="btn small" type="button" data-sf-page="gen/velvet.html">柔面</button>
+            <button class="btn small" type="button" data-sf-page="gen/wyre.html">走线</button>
+            <button class="btn small" type="button" data-sf-page="gen/dotgrid.html">点阵</button>
+          </div>
+          <label class="sftex-size-label" for="sftex-size">尺寸</label>
+          <select id="sftex-size" class="sftex-size-select" title="生成与导出的贴图边长（像素）">
+            <option value="512">512</option>
+            <option value="1024" selected>1024</option>
+            <option value="2048">2048</option>
+            <option value="4096">4096</option>
+            <option value="8192">8192</option>
+          </select>
+          <span class="sftex-spacer"></span>
+          <button class="btn small sftex-export" id="sftex-export" type="button" title="导出当前预览的贴图（高度图或着色图）">导出</button>
+          <button class="btn small" id="sftex-dir" type="button" title="设置导出目录">输出目录…</button>
+          <span class="sftex-dir" id="sftex-dir-label"></span>
+          <button class="btn tiny" id="sftex-dir-clear" type="button" title="清除输出目录" hidden>×</button>
+          <button class="btn small" id="sftex-reload" type="button" title="重新载入生成器">重新载入</button>
+          <span class="sftex-sep" aria-hidden="true"></span>
+          <button class="btn small" type="button" data-sf-page="settings.html">设置</button>
+          <button class="btn small" type="button" id="sftex-guide" title="查看使用指南">使用指南</button>
+        </div>
+        <div class="sftex-viewport" id="sftex-viewport">
+          <div class="sftex-stage" id="sftex-stage">
+            <iframe
+              id="sftex-frame"
+              class="sftex-frame"
+              title="科幻纹理生成"
+              allow="downloads"
+            ></iframe>
+          </div>
+        </div>
+        <div class="sftex-status" id="sftex-status" aria-live="polite"></div>
       </div>
     </div>
 

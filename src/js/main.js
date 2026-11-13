@@ -17,6 +17,7 @@ import { initFlipClock } from './clock-page.js';
 import { initFlowmap } from './flowmap-page.js';
 import { initModelPage } from './model-page.js';
 import { initRenamePage } from './rename-page.js';
+import { initSftexPage } from './sftex-page.js';
 import {
   onGlobalDrop,
   isSupportedName,
@@ -102,6 +103,7 @@ const tabMerge = document.getElementById('tab-merge');
 const tabConvert = document.getElementById('tab-convert');
 const tabNormal = document.getElementById('tab-normal');
 const tabSeamless = document.getElementById('tab-seamless');
+const tabSftex = document.getElementById('tab-sftex');
 const tabFlowmap = document.getElementById('tab-flowmap');
 const tabModel = document.getElementById('tab-model');
 const tabGif = document.getElementById('tab-gif');
@@ -118,6 +120,7 @@ const pageMerge = document.getElementById('page-merge');
 const pageConvert = document.getElementById('page-convert');
 const pageNormal = document.getElementById('page-normal');
 const pageSeamless = document.getElementById('page-seamless');
+const pageSftex = document.getElementById('page-sftex');
 const pageFlowmap = document.getElementById('page-flowmap');
 const pageModel = document.getElementById('page-model');
 const pageGif = document.getElementById('page-gif');
@@ -133,6 +136,9 @@ const pageClock = document.getElementById('page-clock');
 const pageRename = document.getElementById('page-rename');
 const pageSysInfo = document.getElementById('page-sysinfo');
 const pageShutdown = document.getElementById('page-shutdown');
+
+// 科幻纹理生成：iframe 懒加载 + 缩放 + 保存桥接都收在这个模块里
+const sftexApi = initSftexPage();
 
 const srcView = new CanvasView(document.getElementById('src-canvas'), {
   clickable: true,
@@ -259,6 +265,7 @@ const tabs = [
   ['convert', tabConvert, pageConvert, [convView]],
   ['normal', tabNormal, pageNormal, [nrmSrcView, nrmOutView]],
   ['seamless', tabSeamless, pageSeamless, [smlSrcView, smlOutView]],
+  ['sftex', tabSftex, pageSftex, []],
   ['flowmap', tabFlowmap, pageFlowmap, []],
   ['model', tabModel, pageModel, [modelApi]],
   ['gif', tabGif, pageGif, [gifSrcView]],
@@ -306,6 +313,8 @@ function showTab(which) {
   active[1].scrollIntoView({ block: 'nearest', inline: 'nearest' });
   syncTabIndicator();
   requestAnimationFrame(() => active[3].forEach((v) => v.redraw()));
+  // 第一次进这个页签才加载 iframe，避免启动时就分配那几张 8K 画布
+  if (which === 'sftex') sftexApi.activate();
 }
 
 tabSplit.addEventListener('click', () => showTab('split'));
@@ -313,6 +322,7 @@ tabMerge.addEventListener('click', () => showTab('merge'));
 tabConvert.addEventListener('click', () => showTab('convert'));
 tabNormal.addEventListener('click', () => showTab('normal'));
 tabSeamless.addEventListener('click', () => showTab('seamless'));
+tabSftex.addEventListener('click', () => showTab('sftex'));
 tabFlowmap.addEventListener('click', () => showTab('flowmap'));
 tabModel.addEventListener('click', () => showTab('model'));
 tabGif.addEventListener('click', () => showTab('gif'));
@@ -421,6 +431,9 @@ function readTabOrder() {
     // 首次加入 Word 页时，跟随已有的 PDF 页，保留用户对其他页签的排序。
     const pdfIndex = order.indexOf('pdf');
     if (pdfIndex >= 0 && !order.includes('word')) order.splice(pdfIndex + 1, 0, 'word');
+    // 首次加入「科幻纹理生成」时跟在无缝贴图后面，别被挤到最末尾
+    const seamlessIndex = order.indexOf('seamless');
+    if (seamlessIndex >= 0 && !order.includes('sftex')) order.splice(seamlessIndex + 1, 0, 'sftex');
     return order;
   } catch (e) {
     return [];
@@ -990,6 +1003,8 @@ themeBtn.addEventListener('click', (ev) => {
 });
 
 onGlobalDrop((entries) => {
+  // 科幻纹理生成是独立 iframe，不吃宿主的拖放；不拦住的话会误落到「序列图合并」
+  if (!pageSftex.classList.contains('hidden')) return;
   // 批量重命名页：接受任意文件 / 文件夹，谁在前台就交给谁（放最前，类型不再过滤）
   if (!pageRename.classList.contains('hidden')) {
     renameApi.importPaths(entries);

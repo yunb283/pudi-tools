@@ -1,0 +1,58 @@
+<script>
+	var sprite = [
+		"001",
+	];
+</script>
+
+<div class="canvasbox">
+	<div class="viewcontrols disabled">
+		<a href="#" onclick="showHeight(1);">高度图</a>
+		<a href="#" onclick="showHeight(0);">着色图</a>
+	</div>
+	<div class="canvasboxinner">
+		<canvas id="dis" generated="nope" width="1024" height="1024" onclick="refresh()">
+		</canvas>
+		<canvas id="dat" width="1024" height="1024" onclick="refresh()">
+		</canvas>
+	</div>
+</div>
+
+<div class="editorbox" onclick="hideColorizer();">
+	<h3><b class="upd">注意！</b></h3>
+	<p>JSplacement: Metropolis 目前仍是概念草图，生成的贴图还达不到预期效果，因此工具箱里没有开放这个入口。</p>
+</div>
+
+<p id="imgs"></p>
+
+<div id="colorizer" class="hidden">
+</div>
+
+
+<div class="actionbox">
+	<a href="#" class="generate" onclick="refresh()">生成</a>
+	<a href="#" class="height disabled" onclick="saveHeight(savename)">保存高度图</a>
+	<a href="#" class="undo disabled" onclick="undoMap()">撤销</a>
+	<a href="#" class="invert disabled" onclick="invertMap()">反相</a>
+	<a href="#" class="normal disabled" onclick="saveNormal(savename)">保存法线图</a>
+	<a href="#" class="colorize disabled" onclick='toggleColorizer()'>渐变着色</a>
+	<a href="#" class="color disabled" onclick="saveColor(savename)">保存着色图</a>
+</div>
+
+
+<script>
+	function setValue(id,value) {
+		document.querySelector(id).value = value;
+	}
+</script>
+<script src="req/js/gen/common/common.js"></script>
+<script src="req/js/gen/common/colorizer.js"></script>
+<script src="req/js/gen/js-metropolis/js-metropolis.js"></script>
+<script>
+	var savename = "JS-Metropolis-";
+	var seamlsmode = 0;
+	var timestamp;
+	var guidepage = "jsmetropolis";
+	$(function() {
+		$("#colorizer").load("pages/gradients.html");
+	});
+</script>

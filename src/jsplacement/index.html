@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>科幻纹理生成</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="WEB_PORT_icon.png" type="image/png" sizes="any" />
+
+    <!-- 直接复用工具箱的 styles.css：主题变量、.btn / .panel / 表单控件全都一致 -->
+    <link rel="stylesheet" type="text/css" href="../styles.css" />
+    <!-- JSPlacement 原有 DOM 的重新排版，覆盖原版写死的 1280×800 布局 -->
+    <link rel="stylesheet" type="text/css" href="embed.css" />
+
+    <!-- 依赖全部本地化，离线可用；顺序不能改（compat 要先于 backbone） -->
+    <script src="vendor/jquery.min.js"></script>
+    <script src="sftex-data.js"></script>
+    <script src="compat.js"></script>
+    <script src="WEB_PORT.js"></script>
+
+    <script src="req/js/sys/backbone.js"></script>
+    <script src="req/js/sys/config.js"></script>
+    <script src="req/js/sys/vercheck.js"></script>
+    <script src="req/js/sys/navigation.js"></script>
+    <script src="req/js/sys/hotkeys.js"></script>
+    <script src="req/js/sys/splash.js"></script>
+
+    <script src="req/js/gen/common/blob.js"></script>
+    <script src="req/js/gen/common/filesaver.js"></script>
+
+    <script src="embed.js"></script>
+  </head>
+
+  <body>
+    <!-- 工具箱风格的工具条：生成器切换 + 辅助页面 -->
+    <div class="sf-toolbar" id="sf-toolbar">
+      <span class="sf-toolbar-title">科幻纹理生成</span>
+      <div class="sf-toolbar-group" id="sf-nav-gen">
+        <button class="btn small" type="button" data-page="home.html">首页</button>
+        <button class="btn small" type="button" data-page="gen/jsplacement.html">经典版</button>
+        <button class="btn small" type="button" data-page="gen/jsplacement2.html">精灵 2</button>
+        <button class="btn small" type="button" data-page="gen/velvet.html">柔面</button>
+        <button class="btn small" type="button" data-page="gen/wyre.html">走线</button>
+        <button class="btn small" type="button" data-page="gen/dotgrid.html">点阵</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="btn small" type="button" data-page="settings.html">设置</button>
+      <button class="btn small" type="button" id="sf-btn-guide">使用指南</button>
+    </div>
+
+    <!-- 页面片段由 jQuery .load() 注入，embed.js 会把它重排成左右两块 .panel -->
+    <div id="container"></div>
+
+    <!-- 以下节点由原版脚本引用，保留但全部隐藏，不再显示独立窗口的 UI -->
+    <div id="canover"></div>
+    <div id="digiguide" class="invisible"><div id="guide"></div></div>
+    <div id="hotkeys" class="invisible"></div>
+    <div id="firstrun"></div>
+    <div id="sidemenu"></div>
+    <div id="splash" class="skip visible"></div>
+    <footer hidden>
+      <div id="disableanimation"></div>
+      <div id="vercheck"></div>
+    </footer>
+
+    <script src="WEB_PORT_AFTER.js"></script>
+  </body>
+</html>

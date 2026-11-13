@@ -1,0 +1,217 @@
+<div class="canvasbox">
+	<div class="viewcontrols disabled">
+		<a href="#" onclick="showHeight(1);">高度图</a>
+		<a href="#" onclick="showHeight(0);">着色图</a>
+	</div>
+	<div class="canvasboxinner">
+		<canvas id="dis" generated="nope" width="1024" height="1024" onclick="refresh()">
+		</canvas>
+		<canvas id="dat" width="1024" height="1024" onclick="refresh()">
+		</canvas>
+	</div>
+</div>
+
+<div class="editorbox">
+
+	<!-- Sliders -->
+	<div class="sliderbox2w">
+		<div class="values">层数 <output id="layers">35</output></div>
+		<div class="slider"><input type="range" value="35" min="2" max="255" step="1" onchange="setValue('#layers',value);refresh()"></div>
+	</div>
+	<div class="sliderspacer"></div>
+	<div class="sliderbox2w">
+		<div class="values">每层线数 <output id="wpl">3</output></div>
+		<div class="slider"><input type="range" value="3" min="1" max="25" step="1" onchange="setValue('#wpl',value);refresh()"></div>
+	</div>
+
+	<div class="sliderbox2w">
+		<div class="values">最大线宽 <output id="linewidth">64</output></div>
+		<div class="slider"><input type="range" value="64" min="16" max="256" step="1" onchange="setValue('#linewidth',value);refresh()"></div>
+	</div>
+	<div class="sliderspacer"></div>
+	<div class="sliderbox2w">
+		<div class="values">起点散布范围 <output id="spread">0</output></div>
+		<div class="slider"><input type="range" value="0" min="0" max="2048" step="32" onchange="setValue('#spread',value);refresh()"></div>
+	</div>
+
+	<div class="sliderbox2w">
+		<div class="values">最小步长 <output id="minstep">128</output></div>
+		<div class="slider"><input type="range" value="128" min="32" max="512" step="32" onchange="setValue('#minstep',value);refresh()"></div>
+	</div>
+	<div class="sliderspacer"></div>
+	<div class="sliderbox2w">
+		<div class="values">最大步长 <output id="maxstep">2048</output></div>
+		<div class="slider"><input type="range" value="2048" min="512" max="4096" step="128" onchange="setValue('#maxstep',value);refresh()"></div>
+	</div>
+
+	<div style="clear:both"></div>
+	<div class="horispacer"></div>
+
+	<!-- Radio -->
+
+	<div class="editlabel">线条明度模式</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="colormode0" name="colormode" value="0" checked="checked" onchange="refresh()">
+		<label for="colormode0">线性</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="colormode1" name="colormode" value="1" onchange="refresh()">
+		<label for="colormode1">反向线性</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="colormode2" name="colormode" value="2" onchange="refresh()">
+		<label for="colormode2">曲线</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="colormode3" name="colormode" value="3" onchange="refresh()">
+		<label for="colormode3">反向曲线</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="colormode4" name="colormode" value="4" onchange="refresh()">
+		<label for="colormode4">随机</label>
+		<div class="check"></div>
+	</div>
+
+	<div style="clear:both"></div>
+	<div class="sliderspacer"></div>
+
+	<div class="editlabel">线宽变化模式</div>
+
+
+
+	<div class="radiobox5w">
+		<input type="radio" id="scalemode0" name="scalemode" value="0" onchange="refresh()">
+		<label for="scalemode0">线性</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="scalemode1" name="scalemode" value="1" onchange="refresh()">
+		<label for="scalemode1">反向线性</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="scalemode2" name="scalemode" value="2" onchange="refresh()">
+		<label for="scalemode2">曲线</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="scalemode3" name="scalemode" value="3" onchange="refresh()">
+		<label for="scalemode3">反向曲线</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="scalemode4" name="scalemode" value="4" checked="checked" onchange="refresh()">
+		<label for="scalemode4">随机</label>
+		<div class="check"></div>
+	</div>
+
+	<div style="clear:both"></div>
+	<div class="sliderspacer"></div>
+
+
+	<div class="editlabel">步进方向</div>
+
+
+	<div class="radiobox5w">
+		<input type="radio" id="diremode0" name="diremode" value="0" checked="checked" onchange="refresh()">
+		<label for="diremode0">任意方向</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="diremode1" name="diremode" value="1" onchange="refresh()">
+		<label for="diremode1">正交方向</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="diremode2" name="diremode" value="2" onchange="refresh()">
+		<label for="diremode2">对角方向</label>
+		<div class="check"></div>
+	</div>
+
+	<div class="sliderspacer"></div>
+
+	<div class="radiobox5w">
+		<input type="radio" id="diremode3" name="diremode" value="3" onchange="refresh()">
+		<label for="diremode3">锥形方向</label>
+		<div class="check"></div>
+	</div>
+
+</div>
+
+<div id="colorizer" class="hidden">
+	<a href="#" onclick='toggleColorizer()'>
+		<div class="coloreturn">
+			<svg width="100%" height="100%" viewBox="0 0 15 15" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:1.41421;">
+				<path d="M12.188,0l-3.751,0l-5.625,7.5l5.625,7.5l3.75,0l-5.625,-7.5l5.625,-7.5Z"/>
+			</svg>
+		</div>
+	</a>
+	<span id="gradients">
+
+	</span>
+</div>
+
+<div class="actionbox">
+	<a href="#" class="generate" onclick="refresh()">生成</a>
+	<a href="#" class="height disabled" onclick="saveHeight(savename)">保存高度图</a>
+	<a href="#" class="undo disabled" onclick="undoMap()">撤销</a>
+	<a href="#" class="invert disabled" onclick="invertMap()">反相</a>
+	<a href="#" class="normal disabled" onclick="saveNormal(savename)">保存法线图</a>
+	<a href="#" class="colorize disabled" onclick='toggleColorizer()'>渐变着色</a>
+	<a href="#" class="color disabled" onclick="saveColor(savename)">保存着色图</a>
+</div>
+
+<script>
+	function setValue(id,value) {
+		document.querySelector(id).value = value;
+	}
+</script>
+<script src="req/js/gen/common/common.js"></script>
+<script src="req/js/gen/common/colorizer.js"></script>
+<script src="req/js/gen/js-wyre/js-wyre.js"></script>
+<script>
+	var savename = "JS-Wyre-";
+	var seamlsmode;
+	var timestamp;
+	var guidepage = "jsw";
+	$(function() {
+		$("#colorizer").load("pages/gradients.html");
+	});
+</script>
