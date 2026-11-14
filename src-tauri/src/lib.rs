@@ -17,6 +17,7 @@ use std::os::windows::process::CommandExt;
 
 mod system;
 mod word;
+mod diskmon;
 
 /// Windows 的 CREATE_NO_WINDOW：启动控制台子进程时不要新建控制台窗口。
 #[cfg(windows)]
@@ -421,15 +422,21 @@ async fn open_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-#[cfg(windows)]
 async fn reveal_file(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || reveal_file_in_explorer(std::path::Path::new(&path)))
+        .await
+        .map_err(|e| format!("任务执行异常：{e}"))?
+}
+
+#[cfg(windows)]
+fn reveal_file_in_explorer(path: &std::path::Path) -> Result<(), String> {
     use windows::core::{HSTRING, PCWSTR};
     use windows::Win32::System::Com::{
         CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::{SHOpenFolderAndSelectItems, SHParseDisplayName};
 
-    tauri::async_runtime::spawn_blocking(move || {
+    {
         let path = std::path::absolute(path).map_err(|e| e.to_string())?;
         if !path.is_file() {
             return Err("导出文件不存在或无法访问".into());
@@ -448,15 +455,11 @@ async fn reveal_file(path: String) -> Result<(), String> {
             CoUninitialize();
             result.map_err(|e| format!("打开目录并选中文件失败：{e}"))
         }
-    })
-    .await
-    .map_err(|e| format!("任务执行异常：{e}"))?
+    }
 }
 
-#[tauri::command]
 #[cfg(not(windows))]
-async fn reveal_file(path: String) -> Result<(), String> {
-    let _ = path;
+fn reveal_file_in_explorer(_path: &std::path::Path) -> Result<(), String> {
     Err("当前系统不支持定位到导出文件".into())
 }
 
@@ -2479,6 +2482,35 @@ pub fn run() {
             // ffmpeg.exe 有 100MB，第一次调用要现映射映像 + 过安全软件。后台先跑一次
             // 把它热起来，用户点导入时就只需要付热启动的那部分时间。
             warm_up_ffmpeg(app.handle().clone());
+
+            // 磁盘空间变化监测（仅 C 盘）：建库 + 注册状态；
+            // 计划任务带 --diskmon-silent-scan 启动时，同步扫描完立即退出，不做常驻。
+            let dm_init: Result<(), String> = (|| {
+                let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+                let db_path = dir.join(diskmon::DB_FILE);
+                let mut c = diskmon::db::open(&db_path)?;
+                diskmon::db::init(&c)?;
+                if let Some(_lock) = diskmon::scan::try_lock(&db_path)? {
+                    diskmon::db::recover_interrupted(&mut c)?;
+                }
+                drop(c);
+                app.manage(diskmon::DiskmonState::new(db_path));
+                if diskmon::sys::silent_scan_requested() {
+                    let st = app.state::<diskmon::DiskmonState>();
+                    let ctl = st.control();
+                    diskmon::scan::run_silent(app.handle(), &ctl, &st.db_path)?;
+                    // 扫描结果已落库，主程序无需常驻
+                    std::process::exit(0);
+                }
+                Ok(())
+            })();
+            if let Err(e) = dm_init {
+                eprintln!("[diskmon] 初始化失败：{e}");
+                if diskmon::sys::silent_scan_requested() {
+                    std::process::exit(1);
+                }
+            }
             #[cfg(not(windows))]
             let _ = app;
             Ok(())
@@ -2517,7 +2549,22 @@ pub fn run() {
             system::sysinfo_detail,
             system::sysinfo_uptime,
             system::power_status,
-            system::power_action
+            system::power_action,
+            diskmon::commands::dm_scan_progress,
+            diskmon::commands::dm_start_scan,
+            diskmon::commands::dm_cancel_scan,
+            diskmon::commands::dm_snapshot_errors,
+            diskmon::commands::dm_delete_snapshots,
+            diskmon::commands::dm_set_settings,
+            diskmon::commands::dm_prune,
+            diskmon::commands::dm_compare,
+            diskmon::commands::dm_compare_children,
+            diskmon::commands::dm_overview,
+            diskmon::commands::dm_overview_rankings,
+            diskmon::commands::dm_reveal,
+            diskmon::commands::dm_schedule,
+            diskmon::commands::dm_set_schedule,
+            diskmon::commands::dm_remove_schedule
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

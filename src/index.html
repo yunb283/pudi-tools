@@ -23,6 +23,8 @@
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="styles.css" />
+    <!-- 磁盘监测（React 子应用）的组件样式，选择器全部作用域化到 #page-diskmon -->
+    <link rel="stylesheet" href="diskmon/style.css" />
     <!-- 模型预览页用的 three.js 0.180.0（MIT）整包放在本地 vendor，裸模块名靠 importmap 指过去，离线可用 -->
     <script type="importmap">
       {
@@ -369,6 +371,7 @@
       <button class="tab" id="tab-clock">翻页时钟</button>
       <button class="tab" id="tab-rename">批量重命名</button>
       <button class="tab" id="tab-sysinfo">电脑配置</button>
+      <button class="tab" id="tab-diskmon">磁盘监测</button>
       <button class="tab" id="tab-shutdown">自动关机</button>
     </div>
 
@@ -2630,6 +2633,11 @@
       <div class="rn-toast" id="rn-toast"></div>
     </div>
 
+    <!-- 磁盘空间变化监测（仅 C 盘）：React + TypeScript 子应用挂载点 -->
+    <div class="page hidden" id="page-diskmon">
+      <div id="diskmon-root"></div>
+    </div>
+
     <div class="page hidden" id="page-sysinfo">
       <div class="panel" style="flex: 1 1 0; min-width: 0">
         <div class="panel-head si-head">
@@ -3189,6 +3197,7 @@
       </dialog>
     </div>
 
+    <script type="module" src="diskmon/app.js"></script>
     <script type="module" src="js/main.js"></script>
   </body>
 </html>

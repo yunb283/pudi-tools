@@ -1,11 +1,12 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "0.1.37",
+  "version": "0.1.40",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
+    "build:diskmon": "npm --prefix diskmon-ui run build",
     "build": "node scripts/prepare-build.mjs && tauri build",
     "bump": "node scripts/bump-version.mjs",
     "version:minor": "node scripts/bump-version.mjs minor",

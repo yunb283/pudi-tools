@@ -1,6 +1,6 @@
 [package]
 name = "tauri-app"
-version = "0.1.37"
+version = "0.1.40"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
@@ -25,6 +25,12 @@ tauri-plugin-dialog = "2.8.3"
 winreg = "0.56"
 # HEIC / HEIF 解码（纯 Rust，自带 HEVC intra 解码器，输出与 libheif 逐字节一致）
 zune-heic = "0.5"
+
+# ===== 磁盘空间变化监测（仅 C 盘）=====
+# jwalk：Rayon 并行目录遍历，扫描任务放在后台线程，UI 不阻塞
+jwalk = "0.8"
+# bundled 让 SQLite 随二进制一起编译，用户机器无需预装 sqlite3.dll
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # 关掉 WebView2 自带的浏览器快捷键要直接摸它的 COM 设置接口（版本跟 tauri 依赖的那份一致）

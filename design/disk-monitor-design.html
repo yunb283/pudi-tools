@@ -1,0 +1,1403 @@
+<!doctype html>
+<html lang="zh-CN" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>布丁工具箱 · 磁盘空间变化监测（仅 C 盘）· 设计稿 v0.1</title>
+    <style>
+      /* ============================================================
+         主题变量：与 src/styles.css 完全同源（深色 :root / 浅色 html.light）
+         设计稿只追加 dm-* 变量，不改原值，保证与软件其它页签一致
+         ============================================================ */
+      :root {
+        --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+        --bg-app: #101114;
+        --bg-tab: #1c1e24;
+        --bg-tab-hover: #24272e;
+        --border-tab: #272a31;
+        --text-tab: #8e9199;
+        --text-tab-hover: #eaf6fb;
+        --tab-wash: rgba(255, 255, 255, 0.06);
+        --accent: #4cc2e0;
+        --accent-text: #7bd6ee;
+        --accent-fill: #35c2e8;
+        --accent-fill-hover: #55ceee;
+        --accent-tint: rgba(76, 194, 224, 0.16);
+        --accent-tint-2: rgba(76, 194, 224, 0.24);
+        --on-accent: #080a0c;
+        --busy-track: #7c8088;
+        --bg-titlebar: #17181c;
+        --border-titlebar: #272a31;
+        --text-titlebar: #b7bac2;
+        --pin-hover: rgba(255, 255, 255, 0.09);
+        --bg-panel: #1a1c22;
+        --border-panel: #272a31;
+        --text-title: #f2f3f5;
+        --text-main: #d8d9de;
+        --bg-input: #202329;
+        --border-input: #30343c;
+        --text-input: #d8d9de;
+        --bg-input-hover: #272b33;
+        --border-input-hover: #3c414a;
+        --bg-ghost2: #20232a;
+        --border-ghost2: #2e323a;
+        --bg-ghost3: #22252c;
+        --border-ghost3: #343943;
+        --text-f2: #edeef1;
+        --text-f6: #f4f5f7;
+        --bg-track: #22252c;
+        --bg-progress-track: #22252c;
+        --bg-surface: #1a1c22;
+        --bg-surface2: #16181c;
+        --bg-modal: #171a20;
+        --border-modal: #2a2e37;
+        --border-soft: #33383f;
+        --bg-toast: #1e222a;
+        --border-toast: #2e333d;
+        --scrim: rgba(16, 17, 20, 168);
+        --muted-a6: #a0a3ab;
+        --muted-9a3: #94969e;
+        --muted-6a: #6c6f77;
+        --muted-8a: #85888f;
+        --cyan-text2: #6fd3f0;
+        --yellow-text: #ffd926;
+        --orange-text: #ffc46b;
+        --green-text: #2ecc71;
+        --red-text: #e74c3c;
+
+        /* 设计稿专用：变化状态色（深色） */
+        --dm-up: #ff9c7e;
+        --dm-up-bg: rgba(255, 140, 105, 0.14);
+        --dm-down: #54d2a0;
+        --dm-down-bg: rgba(70, 205, 150, 0.13);
+        --dm-add: var(--accent-text);
+        --dm-add-bg: var(--accent-tint);
+        --dm-del: #e3a19c;
+        --dm-del-bg: rgba(220, 110, 105, 0.13);
+        --dm-warn: #ffd36b;
+        --dm-warn-bg: rgba(255, 200, 80, 0.12);
+        --dm-code-bg: #14161b;
+        --dm-code-border: #2a2f38;
+      }
+      html.light {
+        --bg-app: #eef0f4;
+        --bg-tab: #f7f8fb;
+        --bg-tab-hover: #e6eaf2;
+        --border-tab: #d4d9e3;
+        --text-tab: #5a6072;
+        --text-tab-hover: #232833;
+        --tab-wash: rgba(0, 0, 0, 0.05);
+        --accent: #0b83a9;
+        --accent-text: #0a6e8c;
+        --accent-fill: #39c7ed;
+        --accent-fill-hover: #5ad3f3;
+        --accent-tint: rgba(10, 110, 140, 0.1);
+        --accent-tint-2: rgba(10, 110, 140, 0.16);
+        --on-accent: #080a0c;
+        --busy-track: #e1e5ed;
+        --bg-titlebar: #f4f5f9;
+        --border-titlebar: #dde1ea;
+        --text-titlebar: #3c4252;
+        --pin-hover: rgba(0, 0, 0, 0.07);
+        --bg-panel: #ffffff;
+        --border-panel: #d7dbe4;
+        --text-title: #1f2430;
+        --text-main: #232833;
+        --bg-input: #ffffff;
+        --border-input: #c4cad6;
+        --text-input: #2a2f3a;
+        --bg-input-hover: #e9edf4;
+        --border-input-hover: #9fa8b8;
+        --bg-ghost2: #eef1f7;
+        --border-ghost2: #c4cad6;
+        --bg-ghost3: #eef1f7;
+        --border-ghost3: #c4cad6;
+        --text-f2: #2a2f3a;
+        --text-f6: #232833;
+        --bg-track: #e2e6ee;
+        --bg-progress-track: #e1e5ed;
+        --bg-surface: #f3f5f9;
+        --bg-surface2: #e7eaf1;
+        --bg-modal: #ffffff;
+        --border-modal: #d4d9e3;
+        --border-soft: #d4d9e3;
+        --bg-toast: #f5f8fd;
+        --border-toast: #ced7e6;
+        --scrim: rgba(70, 80, 100, 0.35);
+        --muted-a6: #5f6572;
+        --muted-9a3: #777e8e;
+        --muted-6a: #777e8e;
+        --muted-8a: #777e8e;
+        --cyan-text2: #0b83a9;
+        --yellow-text: #a9740f;
+        --orange-text: #b26a12;
+        --green-text: #16994a;
+        --red-text: #d63626;
+
+        /* 设计稿专用：变化状态色（浅色，加深保证对比度） */
+        --dm-up: #b9451f;
+        --dm-up-bg: rgba(200, 80, 30, 0.1);
+        --dm-down: #127a49;
+        --dm-down-bg: rgba(20, 140, 90, 0.1);
+        --dm-add: #0a6e8c;
+        --dm-add-bg: rgba(10, 110, 140, 0.1);
+        --dm-del: #9a4640;
+        --dm-del-bg: rgba(170, 60, 55, 0.09);
+        --dm-warn: #8a6112;
+        --dm-warn-bg: rgba(190, 140, 30, 0.13);
+        --dm-code-bg: #f3f5f9;
+        --dm-code-border: #d4d9e3;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        background: var(--bg-app);
+        color: var(--text-main);
+        font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+        font-size: 13px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      [hidden] { display: none !important; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-thumb { background: var(--border-soft); border-radius: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+
+      /* ---------- 自绘标题栏（与软件一致） ---------- */
+      .titlebar {
+        flex: 0 0 auto; height: 36px; display: flex; align-items: center; gap: 8px;
+        padding: 0 8px; background: var(--bg-titlebar);
+        border-bottom: 1px solid var(--border-titlebar); color: var(--text-titlebar);
+        user-select: none;
+      }
+      .tb-icon { width: 18px; height: 18px; border-radius: 4px; background: var(--accent-fill); flex: none; }
+      .tb-title { font-size: 12px; letter-spacing: .3px; }
+      .tb-spacer { flex: 1; }
+      .tb-chip {
+        font-size: 11px; padding: 2px 8px; border-radius: 999px;
+        background: var(--accent-tint); color: var(--accent-text);
+      }
+      .tb-btn {
+        width: 30px; height: 26px; display: grid; place-items: center; border: none;
+        background: transparent; color: var(--text-titlebar); border-radius: 4px; cursor: pointer;
+      }
+      .tb-btn:hover { background: var(--pin-hover); }
+      .tb-btn svg { width: 13px; height: 13px; }
+
+      /* ---------- 主页签 ---------- */
+      .tabs {
+        flex: 0 0 auto; position: relative; display: flex; gap: 4px; padding: 8px 8px 4px;
+        background: var(--bg-tab); border-bottom: 1px solid var(--border-tab);
+        overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+      }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab {
+        position: relative; z-index: 1; flex: 0 0 auto; background: transparent;
+        color: var(--text-tab); border: none; border-radius: 6px; padding: 7px 9px;
+        cursor: default; font-family: inherit; font-size: 13px; white-space: nowrap;
+      }
+      .tab.active { color: var(--accent-text); }
+      .tab-ind {
+        position: absolute; left: 0; top: 0; width: var(--w, 0px); height: var(--h, 30px);
+        border-radius: 6px; background: var(--accent-tint); opacity: 0;
+        transform: translate(var(--x, 0px), var(--y, 0px));
+        transition: transform 300ms var(--ease-out), width 300ms var(--ease-out), opacity 160ms ease;
+        pointer-events: none; z-index: 0;
+      }
+      .tab-ind::after {
+        content: ""; position: absolute; left: 9px; right: 9px; bottom: 0; height: 2px;
+        border-radius: 2px; background: var(--accent);
+      }
+      .tab-ind.on { opacity: 1; }
+
+      /* ---------- 设计稿说明条 ---------- */
+      .design-bar {
+        flex: 0 0 auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 6px 12px; font-size: 12px; color: var(--muted-a6);
+        background: var(--bg-surface2); border-bottom: 1px solid var(--border-panel);
+      }
+      .design-bar b { color: var(--accent-text); font-weight: 600; }
+      .design-bar .dot { color: var(--border-soft); }
+
+      /* ---------- 页面骨架 ---------- */
+      .page { flex: 1; display: flex; gap: 8px; padding: 8px; min-height: 0; }
+      .dm-shell {
+        flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0;
+        background: var(--bg-panel); border: 1px solid var(--border-panel); border-radius: 4px;
+        overflow: hidden;
+      }
+      .dm-tabs {
+        position: relative; flex: 0 0 auto; display: flex; gap: 2px; align-items: center;
+        padding: 6px 8px 0; border-bottom: 1px solid var(--border-panel);
+      }
+      .dm-ind {
+        position: absolute; left: 0; top: 0; height: var(--h, 28px); width: var(--w, 0px);
+        border-radius: 6px; background: var(--accent-tint); opacity: 0;
+        transform: translate(var(--x, 0px), var(--y, 0px));
+        transition: transform 280ms var(--ease-out), width 280ms var(--ease-out), opacity 160ms ease;
+        pointer-events: none;
+      }
+      .dm-ind::after {
+        content: ""; position: absolute; left: 9px; right: 9px; bottom: 0; height: 2px;
+        border-radius: 2px; background: var(--accent);
+      }
+      .dm-ind.on { opacity: 1; }
+      .dm-tab {
+        position: relative; z-index: 1; background: transparent; border: none; border-radius: 6px;
+        color: var(--text-tab); font-family: inherit; font-size: 13px; padding: 7px 12px;
+        cursor: pointer; white-space: nowrap; transition: color 160ms ease;
+      }
+      .dm-tab:hover { color: var(--text-tab-hover); background: var(--tab-wash); }
+      .dm-tab.active { color: var(--accent-text); }
+      .dm-tabs .grow { flex: 1; }
+      .dm-views { flex: 1; min-height: 0; overflow: auto; }
+      .dm-view { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 100%; }
+
+      /* ---------- 通用卡片 / 标题 ---------- */
+      .dm-grid { display: grid; gap: 10px; }
+      .g-overview { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
+      .g-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .g-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .dm-card {
+        background: var(--bg-surface); border: 1px solid var(--border-panel);
+        border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 9px;
+        min-width: 0;
+      }
+      html.light .dm-card { background: #ffffff; }
+      .dm-card.transparent { background: transparent; border-style: dashed; }
+      .dm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+      .dm-title { color: var(--text-title); font-weight: 600; font-size: 14px; margin-right: auto; }
+      .dm-sub { font-size: 11px; color: var(--muted-6a); }
+      .dm-hint { font-size: 11px; color: var(--muted-6a); line-height: 1.6; }
+      .dm-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .dm-mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 11px; }
+      .dm-strong { color: var(--text-title); font-weight: 600; }
+
+      /* ---------- KPI ---------- */
+      .kpi { display: flex; flex-direction: column; gap: 5px; }
+      .kpi-label { font-size: 11px; color: var(--muted-a6); }
+      .kpi-val { font-size: 22px; font-weight: 650; color: var(--text-title); line-height: 1.15; }
+      .kpi-val small { font-size: 12px; font-weight: 400; color: var(--muted-a6); margin-left: 3px; }
+      .kpi-foot { font-size: 11px; color: var(--muted-6a); }
+      .kpi.up .kpi-val { color: var(--dm-up); }
+      .kpi.down .kpi-val { color: var(--dm-down); }
+
+      /* ---------- 进度条 / 磁盘条 ---------- */
+      .dm-bar { height: 8px; border-radius: 999px; background: var(--bg-track); overflow: hidden; }
+      .dm-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--accent-fill); }
+      .dm-bar.warn > i { background: linear-gradient(90deg, var(--accent-fill), var(--dm-up)); }
+      .dm-bar.big { height: 14px; }
+      .dm-disk-row { display: grid; grid-template-columns: 46px 1fr 118px; gap: 10px; align-items: center; }
+      .dm-disk-name { font-weight: 600; color: var(--text-title); font-size: 13px; }
+      .dm-disk-num { font-size: 11px; color: var(--muted-a6); text-align: right; white-space: nowrap; }
+
+      /* ---------- 徽标 ---------- */
+      .bd {
+        display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px;
+        font-size: 11px; line-height: 17px; white-space: nowrap; font-weight: 500;
+      }
+      .bd.up { background: var(--dm-up-bg); color: var(--dm-up); }
+      .bd.down { background: var(--dm-down-bg); color: var(--dm-down); }
+      .bd.add { background: var(--dm-add-bg); color: var(--dm-add); }
+      .bd.del { background: var(--dm-del-bg); color: var(--dm-del); }
+      .bd.same { background: var(--bg-ghost3); color: var(--muted-9a3); }
+      .bd.warn { background: var(--dm-warn-bg); color: var(--dm-warn); }
+      .bd.ok { background: var(--dm-down-bg); color: var(--dm-down); }
+      .bd.info { background: var(--accent-tint); color: var(--accent-text); }
+
+      /* ---------- 按钮 / 表单 ---------- */
+      .btn {
+        background: var(--bg-ghost3); color: var(--text-f2); border: 1px solid var(--border-ghost3);
+        padding: 6px 12px; border-radius: 4px; cursor: pointer; font-family: inherit;
+        font-size: 12px; white-space: nowrap;
+      }
+      .btn:hover { background: var(--bg-input-hover); border-color: var(--border-input-hover); }
+      .btn:active { transform: translateY(1px); }
+      .btn:disabled { color: var(--muted-6a); background: var(--bg-ghost2); border-color: var(--border-ghost2); cursor: default; }
+      .btn.primary {
+        background: var(--accent-fill); border-color: transparent; color: var(--on-accent);
+        font-weight: 600; min-height: 32px;
+      }
+      .btn.primary:hover { background: var(--accent-fill-hover); }
+      .btn.tiny { padding: 3px 8px; font-size: 11px; }
+      .btn.danger { color: var(--red-text); }
+      .btn.on { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-text); }
+      select, input[type="text"], input[type="number"], input[type="time"] {
+        background: var(--bg-input); color: var(--text-input); border: 1px solid var(--border-input);
+        border-radius: 4px; padding: 5px 8px; font-family: inherit; font-size: 12px; min-width: 0;
+      }
+      select:focus, input:focus { outline: none; border-color: var(--accent); }
+      input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-fill); }
+      label.dm-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); cursor: pointer; }
+      .dm-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted-a6); }
+
+      /* ---------- 表格 ---------- */
+      .dm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .dm-table th {
+        position: sticky; top: 0; z-index: 2; text-align: left; font-weight: 600; font-size: 11px;
+        color: var(--muted-a6); background: var(--bg-surface2); padding: 7px 9px;
+        border-bottom: 1px solid var(--border-panel); white-space: nowrap;
+      }
+      .dm-table td { padding: 7px 9px; border-bottom: 1px solid var(--border-panel); vertical-align: middle; }
+      .dm-table tbody tr:hover { background: var(--accent-tint); }
+      .dm-table td.num, .dm-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .dm-table .path { max-width: 330px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rank {
+        display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
+        background: var(--bg-ghost3); color: var(--muted-a6); font-size: 11px; font-weight: 600;
+      }
+      .rank.r1 { background: var(--dm-up-bg); color: var(--dm-up); }
+      .rank.r2 { background: var(--accent-tint); color: var(--accent-text); }
+      .rank.r3 { background: var(--bg-ghost3); color: var(--muted-a6); }
+      .mini-bar { width: 90px; height: 5px; border-radius: 999px; background: var(--bg-track); overflow: hidden; }
+      .mini-bar > i { display: block; height: 100%; background: var(--dm-up); border-radius: 999px; }
+
+      /* ---------- 趋势图 ---------- */
+      .chart-wrap { position: relative; width: 100%; }
+      .chart-wrap svg { display: block; width: 100%; height: auto; }
+      .chart-grid { stroke: var(--border-panel); stroke-width: 1; }
+      .chart-area { fill: var(--accent-tint); }
+      .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+      .chart-dot { fill: var(--bg-panel); stroke: var(--accent); stroke-width: 2; }
+      .chart-label { fill: var(--muted-6a); font-size: 10px; font-family: inherit; }
+      .chart-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted-a6); }
+      .chart-legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; background: var(--accent); vertical-align: middle; margin-right: 5px; }
+
+      /* ---------- 警示条 ---------- */
+      .dm-warnbar {
+        display: flex; align-items: flex-start; gap: 9px; padding: 9px 11px; border-radius: 4px;
+        background: var(--dm-warn-bg); border: 1px solid var(--dm-warn); color: var(--dm-warn); font-size: 12px;
+      }
+      .dm-warnbar b { color: inherit; }
+      .dm-warnbar .ico { flex: none; font-weight: 700; }
+
+      /* ---------- 扫描进度 ---------- */
+      .scan-big { font-size: 30px; font-weight: 650; color: var(--text-title); line-height: 1.1; }
+      .scan-cur {
+        font-family: Consolas, "Cascadia Mono", monospace; font-size: 11px; color: var(--cyan-text2);
+        background: var(--bg-input); border: 1px solid var(--border-input); border-radius: 4px;
+        padding: 7px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .scan-progress { position: relative; height: 16px; border-radius: 4px; background: var(--bg-progress-track); overflow: hidden; }
+      .scan-progress > i {
+        display: block; height: 100%; width: 68%; border-radius: 4px;
+        background: linear-gradient(90deg, var(--accent-fill), var(--accent-fill-hover));
+        position: relative;
+      }
+      .scan-progress > i::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+        animation: sweep 1.8s linear infinite;
+      }
+      @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+      /* ---------- 树形对比 ---------- */
+      .tree-scroll { max-height: 430px; overflow: auto; border: 1px solid var(--border-panel); border-radius: 4px; }
+      .dm-table.tree th { z-index: 3; }
+      .dm-table.tree td { padding: 5px 9px; }
+      .twisty {
+        width: 18px; height: 18px; display: inline-grid; place-items: center; cursor: pointer;
+        border: none; background: transparent; color: var(--muted-a6); border-radius: 3px; font-size: 10px;
+        vertical-align: middle; margin-right: 4px;
+      }
+      .twisty:hover { background: var(--accent-tint); color: var(--accent-text); }
+      tr.expanded > td:first-child .twisty { transform: rotate(90deg); color: var(--accent-text); }
+      .twisty.leaf { visibility: hidden; }
+      .node-name { display: inline-flex; align-items: center; white-space: nowrap; }
+      .node-name .ico { margin-right: 6px; font-size: 12px; }
+      .ico.dir { color: var(--yellow-text); }
+      .ico.file { color: var(--muted-a6); }
+      .val-up { color: var(--dm-up); font-weight: 600; }
+      .val-down { color: var(--dm-down); font-weight: 600; }
+      tr.node-deleted td { opacity: .72; }
+
+      /* ---------- 规划说明 ---------- */
+      pre.dm-code {
+        background: var(--dm-code-bg); border: 1px solid var(--dm-code-border); border-radius: 4px;
+        padding: 10px 12px; overflow: auto; font-family: Consolas, "Cascadia Mono", monospace;
+        font-size: 11px; line-height: 1.65; color: var(--text-main); white-space: pre;
+      }
+      pre.dm-code .c { color: var(--muted-6a); }
+      .dm-steps { display: flex; flex-direction: column; gap: 7px; }
+      .dm-step { display: flex; gap: 9px; font-size: 12px; line-height: 1.6; }
+      .dm-step > b { flex: none; color: var(--accent-text); font-weight: 600; }
+      .dm-taglist { display: flex; flex-wrap: wrap; gap: 6px; }
+      .dm-toast {
+        position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+        background: var(--bg-toast); border: 1px solid var(--border-toast); color: var(--text-f2);
+        padding: 8px 14px; border-radius: 6px; font-size: 12px; box-shadow: 0 8px 24px var(--scrim);
+        opacity: 0; pointer-events: none; transition: opacity 200ms ease, transform 200ms var(--ease-out); z-index: 99;
+      }
+      .dm-toast.on { opacity: 1; transform: translate(-50%, 0); }
+      .footnote { font-size: 11px; color: var(--muted-6a); padding: 2px 2px 6px; line-height: 1.6; }
+
+      /* 首页醒目扫描入口：主色实心 + 呼吸光晕，卡片边框同步强调 */
+      .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+      .dm-card.cta-card { border-color: var(--accent); }
+      .dm-scan-cta {
+        display: inline-flex; align-items: center; gap: 6px; flex: none;
+        padding: 6px 12px; border: 1px solid transparent; border-radius: 5px;
+        background: var(--accent-fill); color: var(--on-accent);
+        font-size: 12px; font-weight: 700; letter-spacing: .2px; cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 0 var(--accent-tint);
+        animation: dm-cta-glow 2.4s ease-in-out infinite;
+        transition: background 160ms var(--ease-out), transform 160ms var(--ease-out);
+      }
+      .dm-scan-cta .cta-ico { font-size: 10px; line-height: 1; }
+      .dm-scan-cta:hover { background: var(--accent-fill-hover); transform: translateY(-1px); }
+      .dm-scan-cta:disabled, .dm-scan-cta.busy { animation: none; opacity: .65; cursor: default; transform: none; }
+      @keyframes dm-cta-glow {
+        0%, 100% { box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 0 var(--accent-tint); }
+        50% { box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 4px var(--accent-tint); }
+      }
+      @media (prefers-reduced-motion: reduce) { .dm-scan-cta { animation: none; } }
+      /* 首页文件夹占用排行 */
+      .dm-table.folder-table .path { max-width: 420px; }
+      .dm-table.folder-table th, .dm-table.folder-table td { padding: 6px 8px; }
+      .dm-bar.folder-bar { height: 7px; width: 100%; min-width: 110px; }
+
+      @media (max-width: 1080px) {
+        .g-overview { grid-template-columns: 1fr; }
+        .g-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .g-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ===================== 标题栏 ===================== -->
+    <div class="titlebar">
+      <span class="tb-icon" aria-hidden="true"></span>
+      <span class="tb-title">布丁工具箱</span>
+      <span class="tb-chip">磁盘空间变化监测（仅 C 盘）· 设计稿 v0.1</span>
+      <span class="tb-spacer"></span>
+      <button class="tb-btn" id="themeBtn" title="切换浅色 / 深色">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="themeIcon">
+          <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </svg>
+      </button>
+      <button class="tb-btn" title="最小化"><svg viewBox="0 0 10 10" stroke="currentColor"><path d="M1 5h8" /></svg></button>
+      <button class="tb-btn" title="最大化"><svg viewBox="0 0 10 10" stroke="currentColor" fill="none"><rect x="1.5" y="1.5" width="7" height="7" /></svg></button>
+      <button class="tb-btn" title="关闭"><svg viewBox="0 0 10 10" stroke="currentColor"><path d="M1 1l8 8M9 1l-8 8" /></svg></button>
+    </div>
+
+    <!-- ===================== 主页签（现有工具 + 新增页签） ===================== -->
+    <div class="tabs" id="mainTabs">
+      <span class="tab-ind" id="mainInd" aria-hidden="true"></span>
+      <button class="tab">序列图分割</button>
+      <button class="tab">序列图合并</button>
+      <button class="tab">图片格式转换</button>
+      <button class="tab">贴图转法线</button>
+      <button class="tab">无缝贴图</button>
+      <button class="tab">Flowmap绘制</button>
+      <button class="tab">模型预览</button>
+      <button class="tab">制作GIF</button>
+      <button class="tab">GIF动画预览</button>
+      <button class="tab">视频格式转换</button>
+      <button class="tab">音频格式转换</button>
+      <button class="tab">视频下载</button>
+      <button class="tab">PDF转图片</button>
+      <button class="tab">Word转图片</button>
+      <button class="tab">翻页时钟</button>
+      <button class="tab">批量重命名</button>
+      <button class="tab">电脑配置</button>
+      <button class="tab">自动关机</button>
+      <button class="tab active" id="tabDisk">磁盘空间监测</button>
+    </div>
+
+    <div class="design-bar">
+      <b>设计稿</b><span class="dot">·</span>
+      <b style="color: var(--dm-up)">监测目标固定为 C:\，不扫描其它磁盘 / 不提供自选文件夹</b>
+      <span class="dot">·</span>
+      静态界面原型，所有数值为示意数据，不代表真实扫描结果
+      <span class="dot">·</span> 点击内层页签切换 5 个界面 + 规划说明
+      <span class="dot">·</span> 右上角可切换深色 / 浅色，与软件现有主题一致
+      <span class="dot">·</span> 树形节点、排序、快照选择为可交互演示
+    </div>
+
+    <!-- ===================== 页面主体 ===================== -->
+    <div class="page">
+      <div class="dm-shell">
+        <div class="dm-tabs" id="dmTabs">
+          <span class="dm-ind" id="dmInd" aria-hidden="true"></span>
+          <button class="dm-tab active" data-view="overview">概览首页</button>
+          <button class="dm-tab" data-view="scan">扫描进度</button>
+          <button class="dm-tab" data-view="snapshots">快照管理</button>
+          <button class="dm-tab" data-view="diff">变化对比</button>
+          <button class="dm-tab" data-view="settings">扫描设置</button>
+          <button class="dm-tab" data-view="plan">规划说明</button>
+          <span class="grow"></span>
+          <span class="dm-sub" style="padding-right: 6px">C:\ · 每日 09:00 自动扫描已启用</span>
+        </div>
+
+        <div class="dm-views">
+          <!-- ==================== 概览首页 ==================== -->
+          <section class="dm-view" data-view="overview">
+            <div class="dm-grid g-4">
+              <div class="dm-card kpi cta-card">
+                <div class="kpi-head">
+                  <span class="kpi-label">C 盘使用率</span>
+                  <button class="dm-scan-cta" onclick="toast('示意：桌面端将启动一次 C 盘快照扫描')"><span class="cta-ico">▶</span><span>立即扫描</span></button>
+                </div>
+                <span class="kpi-val">91.5<small>%</small></span>
+                <div class="dm-bar warn"><i style="width: 91.5%"></i></div>
+                <span class="kpi-foot">435.3 / 475.6 GB · 可用 40.3 GB</span>
+              </div>
+              <div class="dm-card kpi">
+                <span class="kpi-label">最近扫描</span>
+                <span class="kpi-val" style="font-size: 19px">11-14 09:12</span>
+                <span class="kpi-foot">自动 · 每日计划任务 · 耗时 3m 42s</span>
+              </div>
+              <div class="dm-card kpi">
+                <span class="kpi-label">历史快照</span>
+                <span class="kpi-val">14<small>份</small></span>
+                <span class="kpi-foot">13 份完整 · 1 份不完整 · 占用 42.6 MB</span>
+              </div>
+              <div class="dm-card kpi up">
+                <span class="kpi-label">近 7 天净增</span>
+                <span class="kpi-val">+17.1<small>GB</small></span>
+                <span class="kpi-foot">对比 11-08 → 11-14 · 增长 4.09%</span>
+              </div>
+            </div>
+
+            <div class="dm-grid g-overview">
+              <!-- 左：磁盘使用量 + 排行榜 -->
+              <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+                <div class="dm-card">
+                  <div class="dm-head">
+                    <span class="dm-title">C 盘使用量</span>
+                    <span class="dm-sub">唯一监测目标 · 来自系统卷信息 · 只读查询</span>
+                    <button class="btn tiny" onclick="toast('示意：此处调用 Rust 侧 C 盘卷容量查询')">刷新</button>
+                  </div>
+                  <div class="dm-disk-row">
+                    <span class="dm-disk-name">C:</span>
+                    <div class="dm-bar big warn"><i style="width: 91.5%"></i></div>
+                    <span class="dm-disk-num">435.3 / 475.6 GB</span>
+                  </div>
+                  <div class="dm-grid g-3">
+                    <div class="kpi"><span class="kpi-label">已用</span><span class="kpi-val" style="font-size: 15px">435.3 GB</span></div>
+                    <div class="kpi"><span class="kpi-label">可用</span><span class="kpi-val" style="font-size: 15px">40.3 GB</span></div>
+                    <div class="kpi"><span class="kpi-label">使用率</span><span class="kpi-val" style="font-size: 15px">91.5%</span></div>
+                  </div>
+                  <div class="dm-hint">监测目标固定为 <span class="dm-mono">C:\</span>（整盘递归），v1 不扫描其它磁盘、不提供自选文件夹。卷容量来自系统只读查询；快照内的统计口径是「可访问文件的逻辑大小之和」，两者不直接等同。</div>
+                </div>
+
+                <div class="dm-card" style="flex: 1; min-height: 0">
+                  <div class="dm-head">
+                    <span class="dm-title">空间变化排行榜</span>
+                    <span class="dm-sub">11-08 → 11-14 · 目录维度</span>
+                    <select id="rankSort" aria-label="排序方式">
+                      <option value="delta">按增长大小</option>
+                      <option value="pct">按增长百分比</option>
+                      <option value="size">按当前体积</option>
+                    </select>
+                    <button class="btn tiny" onclick="switchView('diff')">查看对比 →</button>
+                  </div>
+                  <div style="overflow: auto">
+                    <table class="dm-table" id="rankTable">
+                      <thead>
+                        <tr>
+                          <th style="width: 34px">#</th><th>目录路径</th>
+                          <th class="num">变化</th><th class="num">百分比</th>
+                          <th class="num">当前体积</th><th style="width: 96px">占比</th><th>标记</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr data-delta="4.82" data-pct="38.9" data-size="17.2">
+                          <td><span class="rank r1">1</span></td>
+                          <td class="path dm-mono" title="C:\Users\25351\AppData\Local\Temp">…\AppData\Local\Temp</td>
+                          <td class="num val-up">+4.82 GB</td><td class="num">+38.9%</td><td class="num">17.20 GB</td>
+                          <td><div class="mini-bar"><i style="width: 100%"></i></div></td><td><span class="bd up">变大</span></td>
+                        </tr>
+                        <tr data-delta="3.11" data-pct="45.7" data-size="9.9">
+                          <td><span class="rank r2">2</span></td>
+                          <td class="path dm-mono" title="C:\Users\25351\.workbuddy\plugins">…\.workbuddy\plugins</td>
+                          <td class="num val-up">+3.11 GB</td><td class="num">+45.7%</td><td class="num">9.90 GB</td>
+                          <td><div class="mini-bar"><i style="width: 65%"></i></div></td><td><span class="bd up">变大</span></td>
+                        </tr>
+                        <tr data-delta="1.94" data-pct="10.7" data-size="20.1">
+                          <td><span class="rank r3">3</span></td>
+                          <td class="path dm-mono" title="C:\Windows\WinSxS">C:\Windows\WinSxS</td>
+                          <td class="num val-up">+1.94 GB</td><td class="num">+10.7%</td><td class="num">20.10 GB</td>
+                          <td><div class="mini-bar"><i style="width: 40%"></i></div></td><td><span class="bd up">变大</span></td>
+                        </tr>
+                        <tr data-delta="1.26" data-pct="100" data-size="1.26">
+                          <td><span class="rank">4</span></td>
+                          <td class="path dm-mono" title="C:\Users\25351\Downloads\pudi-tools\node_modules">…\Downloads\pudi-tools\node_modules</td>
+                          <td class="num val-up">+1.26 GB</td><td class="num">新增</td><td class="num">1.26 GB</td>
+                          <td><div class="mini-bar"><i style="width: 26%"></i></div></td><td><span class="bd add">新增</span></td>
+                        </tr>
+                        <tr data-delta="0.88" data-pct="10.9" data-size="8.98">
+                          <td><span class="rank">5</span></td>
+                          <td class="path dm-mono" title="C:\Users\25351\Downloads">…\25351\Downloads</td>
+                          <td class="num val-up">+0.88 GB</td><td class="num">+10.9%</td><td class="num">8.98 GB</td>
+                          <td><div class="mini-bar"><i style="width: 18%"></i></div></td><td><span class="bd up">变大</span></td>
+                        </tr>
+                        <tr data-delta="-0.41" data-pct="-12.8" data-size="2.79">
+                          <td><span class="rank">6</span></td>
+                          <td class="path dm-mono" title="C:\ProgramData\NVIDIA Corporation">C:\ProgramData\NVIDIA…</td>
+                          <td class="num val-down">−0.41 GB</td><td class="num">−12.8%</td><td class="num">2.79 GB</td>
+                          <td><div class="mini-bar"><i style="width: 8%; background: var(--dm-down)"></i></div></td><td><span class="bd down">变小</span></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="dm-hint">排行榜按「目录递归汇总大小」计算，子目录变化已计入父目录，不会重复计数。</div>
+                </div>
+              </div>
+
+              <!-- 右：趋势 + 快捷操作 + 状态 -->
+              <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+                <div class="dm-card">
+                  <div class="dm-head">
+                    <span class="dm-title">历史趋势</span>
+                    <span class="dm-sub">C:\ 快照总量 · 最近 7 次</span>
+                  </div>
+                  <div class="chart-legend"><span><i></i>快照总量 (GB)</span><span class="dm-sub">单位：GB</span></div>
+                  <div class="chart-wrap">
+                    <svg viewBox="0 0 460 176" preserveAspectRatio="none" role="img" aria-label="磁盘占用历史趋势折线图">
+                      <line class="chart-grid" x1="38" y1="20" x2="448" y2="20" />
+                      <line class="chart-grid" x1="38" y1="60" x2="448" y2="60" />
+                      <line class="chart-grid" x1="38" y1="100" x2="448" y2="100" />
+                      <line class="chart-grid" x1="38" y1="140" x2="448" y2="140" />
+                      <text class="chart-label" x="2" y="24">440</text>
+                      <text class="chart-label" x="2" y="64">430</text>
+                      <text class="chart-label" x="2" y="104">420</text>
+                      <text class="chart-label" x="2" y="144">410</text>
+                      <path class="chart-area" d="M38 133 L106 113 L174 102 L242 78 L310 51 L378 30 L446 8 L446 140 L38 140 Z" />
+                      <path class="chart-line" d="M38 133 L106 113 L174 102 L242 78 L310 51 L378 30 L446 8" />
+                      <circle class="chart-dot" cx="38" cy="133" r="3.2" /><circle class="chart-dot" cx="106" cy="113" r="3.2" />
+                      <circle class="chart-dot" cx="174" cy="102" r="3.2" /><circle class="chart-dot" cx="242" cy="78" r="3.2" />
+                      <circle class="chart-dot" cx="310" cy="51" r="3.2" /><circle class="chart-dot" cx="378" cy="30" r="3.2" />
+                      <circle class="chart-dot" cx="446" cy="8" r="4" />
+                      <text class="chart-label" x="30" y="160">11-08</text><text class="chart-label" x="98" y="160">11-09</text>
+                      <text class="chart-label" x="166" y="160">11-10</text><text class="chart-label" x="234" y="160">11-11</text>
+                      <text class="chart-label" x="302" y="160">11-12</text><text class="chart-label" x="370" y="160">11-13</text>
+                      <text class="chart-label" x="428" y="160">11-14</text>
+                    </svg>
+                  </div>
+                  <div class="dm-hint">418.2 → 435.3 GB，7 天净增 17.1 GB。趋势只使用状态为「完整」的快照，不完整快照以空心点标注且不参与结论。</div>
+                </div>
+
+                <div class="dm-card">
+                  <div class="dm-head"><span class="dm-title">快速操作</span></div>
+                  <div class="dm-row">
+                    <button class="btn" onclick="switchView('scan')">查看扫描进度 →</button>
+                    <button class="btn" onclick="switchView('snapshots')">管理快照</button>
+                    <button class="btn" onclick="switchView('diff')">比较两次快照</button>
+                  </div>
+                  <div class="dm-row">
+                    <button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">在资源管理器中打开 C:\</button>
+                    <button class="btn tiny" onclick="switchView('settings')">自动扫描设置</button>
+                  </div>
+                </div>
+
+                <div class="dm-card">
+                  <div class="dm-head"><span class="dm-title">最近一次扫描</span><span class="bd ok">完整</span></div>
+                  <div class="dm-grid g-2">
+                    <div class="kpi"><span class="kpi-label">文件 / 目录</span><span class="kpi-val" style="font-size: 16px">1,284,663 <small>/ 96,214</small></span></div>
+                    <div class="kpi"><span class="kpi-label">扫描异常</span><span class="kpi-val" style="font-size: 16px">3 <small>条</small></span></div>
+                  </div>
+                  <div class="dm-hint">权限不足 2 · 文件消失 1 · 重解析点跳过 41（默认不跟随）。异常不影响其它目录统计，但会在快照上标记。</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dm-card">
+              <div class="dm-head">
+                <span class="dm-title">文件夹占用空间排行</span>
+                <span class="dm-sub">基于快照 #14 · 前 8 个目录 · 扫描后自动生成</span>
+                <button class="btn tiny" onclick="switchView('diff')">逐级展开目录树 →</button>
+              </div>
+              <table class="dm-table folder-table">
+                <thead><tr>
+                  <th style="width: 34px">#</th><th>文件夹</th><th>占用（相对榜首）</th>
+                  <th class="num">大小</th><th class="num">占快照统计</th><th style="width: 62px">操作</th>
+                </tr></thead>
+                <tbody>
+                  <tr><td><span class="rank r1">1</span></td><td class="path dm-mono" title="C:\Users">C:\Users</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 100%"></i></div></td><td class="num dm-strong">97.90 GB</td><td class="num">22.5%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank r2">2</span></td><td class="path dm-mono" title="C:\Users\25351">C:\Users\25351</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 92%"></i></div></td><td class="num dm-strong">89.90 GB</td><td class="num">20.7%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank r3">3</span></td><td class="path dm-mono" title="C:\Users\25351\AppData">C:\Users\25351\AppData</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 45%"></i></div></td><td class="num dm-strong">43.80 GB</td><td class="num">10.1%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank">4</span></td><td class="path dm-mono" title="C:\Users\25351\AppData\Local">C:\Users\25351\AppData\Local</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 41%"></i></div></td><td class="num dm-strong">39.80 GB</td><td class="num">9.1%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank">5</span></td><td class="path dm-mono" title="C:\Windows">C:\Windows</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 33%"></i></div></td><td class="num dm-strong">32.20 GB</td><td class="num">7.4%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank">6</span></td><td class="path dm-mono" title="C:\Program Files">C:\Program Files</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 25%"></i></div></td><td class="num dm-strong">24.00 GB</td><td class="num">5.5%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank">7</span></td><td class="path dm-mono" title="C:\Users\25351\Downloads">C:\Users\25351\Downloads</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 20%"></i></div></td><td class="num dm-strong">19.10 GB</td><td class="num">4.4%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                  <tr><td><span class="rank">8</span></td><td class="path dm-mono" title="C:\Windows\Installer">C:\Windows\Installer</td>
+                    <td><div class="dm-bar folder-bar"><i style="width: 7%"></i></div></td><td class="num dm-strong">6.42 GB</td><td class="num">1.5%</td>
+                    <td><button class="btn tiny" onclick="toast('示意：调用 explorer /select 打开目录')">定位</button></td></tr>
+                </tbody>
+              </table>
+              <div class="dm-hint">目录大小为<b>递归汇总值（包含所有子目录）</b>，因此父目录必然不小于子目录并排在前面；每个文件只归属直接父目录一次，不会重复计数。榜单不含根目录 <span class="dm-mono">C:\</span> 与重解析点；占比以快照统计到的可访问文件总量为分母，与卷已用空间口径不同。快照不完整时仅覆盖可访问目录，不给全盘精确占用结论。</div>
+            </div>
+
+            <div class="footnote">设计说明：首页是「C 盘容量 + 排行 + 趋势」，不承载重操作；扫描、快照、对比各自独立成页，避免单页信息过载。v1 只有一个监测目标，因此首页不设「添加监测目录」入口。</div>
+          </section>
+
+          <!-- ==================== 扫描进度 ==================== -->
+          <section class="dm-view" data-view="scan" hidden>
+            <div class="dm-grid g-2">
+              <div class="dm-card">
+                <div class="dm-head">
+                  <span class="dm-title">正在扫描 C:\</span>
+                  <span class="bd info">扫描中</span>
+                </div>
+                <div class="dm-row" style="justify-content: space-between; align-items: flex-end">
+                  <div class="scan-big">68<span style="font-size: 16px; color: var(--muted-a6)">%</span></div>
+                  <div class="dm-sub">已用 02:31 · 预计剩余 01:10 · 8 线程并行</div>
+                </div>
+                <div class="scan-progress"><i></i></div>
+                <div class="dm-field">
+                  <span>当前扫描路径</span>
+                  <div class="scan-cur" title="C:\Users\25351\AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy\LocalState">C:\Users\25351\AppData\Local\Packages\Microsoft.Windows.Search_cw5n1h2txyewy\LocalState\…</div>
+                </div>
+                <div class="dm-grid g-3">
+                  <div class="kpi"><span class="kpi-label">已扫描文件</span><span class="kpi-val" style="font-size: 17px">873,412</span></div>
+                  <div class="kpi"><span class="kpi-label">已扫描目录</span><span class="kpi-val" style="font-size: 17px">64,908</span></div>
+                  <div class="kpi"><span class="kpi-label">当前速率</span><span class="kpi-val" style="font-size: 17px">5,780<small>项/秒</small></span></div>
+                </div>
+                <div class="dm-row">
+                  <button class="btn danger" onclick="toast('示意：已发送取消信号，快照将标记为 cancelled 且不参与对比')">取消扫描</button>
+                  <button class="btn" onclick="switchView('settings')">扫描选项</button>
+                  <span class="dm-hint">取消后已完成的部分不写入正式快照，避免出现半份数据误导结论。</span>
+                </div>
+              </div>
+
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">本次扫描配置</span><span class="dm-sub">实时只读</span></div>
+                <table class="dm-table">
+                  <tbody>
+                    <tr><td>扫描目标</td><td class="dm-mono dm-strong">C:\（固定 · v1 唯一目标）</td></tr>
+                    <tr><td>触发方式</td><td>手动</td></tr>
+                    <tr><td>跟随符号链接 / Junction</td><td><span class="bd same">关闭（默认）</span></td></tr>
+                    <tr><td>跳过重解析点</td><td><span class="bd ok">开启</span></td></tr>
+                    <tr><td>采集内容</td><td>仅元数据（路径 / 大小 / 类型 / mtime）</td></tr>
+                    <tr><td>并行线程</td><td>8（jwalk 并行遍历）</td></tr>
+                    <tr><td>批量写入</td><td>2,000 条 / 事务</td></tr>
+                    <tr><td>进度事件</td><td>100ms 节流推送</td></tr>
+                  </tbody>
+                </table>
+                <div class="dm-hint">扫描过程不打开文件、不读取文件内容、不上传任何数据；所有写操作只发生在本地 SQLite。</div>
+              </div>
+            </div>
+
+            <div class="dm-card">
+              <div class="dm-head">
+                <span class="dm-title">扫描异常记录</span>
+                <span class="dm-sub">实时累计 · 完整记录写入 scan_errors 表</span>
+                <button class="btn tiny" onclick="toast('示意：导出错误清单')">导出清单</button>
+              </div>
+              <table class="dm-table">
+                <thead><tr><th style="width: 130px">类型</th><th>路径</th><th class="num" style="width: 90px">数量</th><th style="width: 110px">处理</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="bd warn">权限不足</span></td><td class="path dm-mono">C:\Windows\System32\config\…</td><td class="num">2</td><td>跳过并记录</td></tr>
+                  <tr><td><span class="bd warn">文件消失</span></td><td class="path dm-mono">C:\Users\25351\AppData\Local\Temp\tmp7A2F.tmp</td><td class="num">1</td><td>跳过并记录</td></tr>
+                  <tr><td><span class="bd same">重解析点</span></td><td class="path dm-mono">C:\Users\25351\Application Data（Junction）</td><td class="num">41</td><td>不跟随、不重复计数</td></tr>
+                </tbody>
+              </table>
+              <div class="dm-warnbar">
+                <span class="ico">!</span>
+                <span><b>不完整扫描保护：</b>若异常涉及目录且导致该目录子树无法完整统计，整份快照标记为「不完整」。不完整的快照可以浏览，但禁止用作精确变化结论；对比页会强制显示警示并隐藏精确百分比列。</span>
+              </div>
+            </div>
+            <div class="footnote">设计说明：进度信息由 Rust 后台线程通过 Tauri 事件推送，前端不做轮询；取消按钮走原子标志位，保证正在进行的批量事务能干净回滚。扫描入口只有「扫描 C 盘」一个，无需选择目标。</div>
+          </section>
+
+          <!-- ==================== 快照管理 ==================== -->
+          <section class="dm-view" data-view="snapshots" hidden>
+            <div class="dm-card">
+              <div class="dm-head">
+                <span class="dm-title">历史快照</span>
+                <span class="dm-sub">共 14 份 · 占用 42.6 MB · 最大保留 30 份</span>
+                <button class="btn tiny" onclick="switchView('scan')">立即扫描</button>
+                <button class="btn tiny" onclick="compareSelected()">比较选中 →</button>
+                <button class="btn tiny danger" onclick="toast('示意：删除所选快照（需二次确认）')">删除所选</button>
+                <button class="btn tiny" onclick="switchView('settings')">清理策略</button>
+              </div>
+              <div style="overflow: auto">
+                <table class="dm-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 32px"></th><th style="width: 42px">#</th><th style="width: 128px">扫描时间</th>
+                      <th>根目录</th><th class="num">文件数</th><th class="num">目录数</th>
+                      <th class="num">汇总大小</th><th>状态</th><th class="num">异常</th><th>触发</th><th style="width: 116px">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><input type="radio" name="snapA" value="14" checked title="设为基准 A" /></td>
+                      <td class="dm-mono">14</td><td class="dm-mono">11-14 09:12</td><td class="dm-mono">C:\</td>
+                      <td class="num">1,284,663</td><td class="num">96,214</td><td class="num dm-strong">435.3 GB</td>
+                      <td><span class="bd ok">完整</span></td><td class="num">3</td><td>自动 · 每日</td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开位置</button></td>
+                    </tr>
+                    <tr>
+                      <td><input type="radio" name="snapA" value="13" title="设为基准 A" /></td>
+                      <td class="dm-mono">13</td><td class="dm-mono">11-13 09:08</td><td class="dm-mono">C:\</td>
+                      <td class="num">1,279,104</td><td class="num">95,882</td><td class="num dm-strong">430.7 GB</td>
+                      <td><span class="bd ok">完整</span></td><td class="num">0</td><td>自动 · 每日</td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开位置</button></td>
+                    </tr>
+                    <tr style="background: var(--dm-warn-bg)">
+                      <td><input type="radio" name="snapA" value="12" title="设为基准 A" /></td>
+                      <td class="dm-mono">12</td><td class="dm-mono">11-11 09:11</td><td class="dm-mono">C:\</td>
+                      <td class="num">1,268,207</td><td class="num">94,106</td><td class="num dm-strong">428.1 GB</td>
+                      <td><span class="bd warn">不完整</span></td><td class="num">128</td><td>自动 · 每日</td>
+                      <td><button class="btn tiny" onclick="toast('示意：查看异常明细')">异常明细</button></td>
+                    </tr>
+                    <tr>
+                      <td><input type="radio" name="snapA" value="11" title="设为基准 A" /></td>
+                      <td class="dm-mono">11</td><td class="dm-mono">11-09 21:30</td><td class="dm-mono">C:\</td>
+                      <td class="num">1,258,442</td><td class="num">94,510</td><td class="num dm-strong">421.6 GB</td>
+                      <td><span class="bd ok">完整</span></td><td class="num">0</td><td>手动</td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开位置</button></td>
+                    </tr>
+                    <tr>
+                      <td><input type="radio" name="snapA" value="10" title="设为基准 A" /></td>
+                      <td class="dm-mono">10</td><td class="dm-mono">11-08 09:07</td><td class="dm-mono">C:\</td>
+                      <td class="num">1,251,930</td><td class="num">93,771</td><td class="num dm-strong">418.2 GB</td>
+                      <td><span class="bd ok">完整</span></td><td class="num">1</td><td>自动 · 每日</td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开位置</button></td>
+                    </tr>
+                    <tr>
+                      <td><input type="radio" name="snapA" value="9" title="设为基准 A" /></td>
+                      <td class="dm-mono">9</td><td class="dm-mono">11-07 18:42</td><td class="dm-mono">C:\</td>
+                      <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+                      <td><span class="bd same">已取消</span></td><td class="num">—</td><td>手动</td>
+                      <td><button class="btn tiny" disabled>不可比较</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="dm-hint">所有快照的根目录均为 <span class="dm-mono">C:\</span>（v1 固定，可直接横向比较）；单选列用于指定「基准快照 A」，对比快照 B 在对比页选择；已取消与不完整的快照不可作为精确结论依据。</div>
+            </div>
+
+            <div class="dm-grid g-2">
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">清理与存储</span><span class="dm-sub">设置保存在 settings 表</span></div>
+                <div class="dm-grid g-2">
+                  <label class="dm-field"><span>最大快照数量</span><input type="number" value="30" min="1" max="500" /></label>
+                  <label class="dm-field"><span>保留天数（0 表示不限）</span><input type="number" value="90" min="0" /></label>
+                </div>
+                <label class="dm-lbl"><input type="checkbox" checked /> 扫描完成后自动清理超出上限的旧快照</label>
+                <label class="dm-lbl"><input type="checkbox" checked /> 清理时至少保留最近 3 份完整快照</label>
+                <div class="dm-row">
+                  <button class="btn primary" onclick="toast('示意：已保存清理策略')">保存配置</button>
+                  <button class="btn" onclick="toast('示意：预览将被清理的快照清单')">预览清理</button>
+                  <span class="dm-hint">清理只删除本软件数据库中的快照记录，绝不触碰磁盘上的任何用户或系统文件。</span>
+                </div>
+              </div>
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">存储占用</span></div>
+                <div class="dm-disk-row">
+                  <span class="dm-disk-name">DB</span>
+                  <div class="dm-bar big"><i style="width: 14%"></i></div>
+                  <span class="dm-disk-num">42.6 MB</span>
+                </div>
+                <div class="dm-hint">entries 表按快照存储，单份完整 C:\ 快照约 3.1 MB（路径去重 + 整数存储）。WAL 模式 + 事务批量写入，扫描期间不阻塞界面。</div>
+                <div class="dm-row">
+                  <span class="bd info">WAL</span><span class="bd info">批量事务</span>
+                  <span class="bd info">路径索引</span><span class="bd info">级联删除</span>
+                </div>
+              </div>
+            </div>
+            <div class="footnote">设计说明：快照列表把「状态」做成一等公民，完整 / 不完整 / 已取消一眼可分，从源头避免拿半份数据算变化。</div>
+          </section>
+
+          <!-- ==================== 变化对比 ==================== -->
+          <section class="dm-view" data-view="diff" hidden>
+            <div class="dm-card">
+              <div class="dm-head">
+                <span class="dm-title">快照对比</span>
+                <span class="dm-sub">以路径为键做全外连接，目录大小为后序递归汇总值</span>
+              </div>
+              <div class="dm-row">
+                <span class="dm-sub">基准 A</span>
+                <select id="selA"><option value="10">#10 · 11-08 09:07 · 完整</option></select>
+                <button class="btn tiny" onclick="swapSnapshots()" title="交换 A / B">⇄ 交换</button>
+                <span class="dm-sub">对比 B</span>
+                <select id="selB"><option value="14">#14 · 11-14 09:12 · 完整</option></select>
+                <span style="width: 14px"></span>
+                <span class="dm-sub">排序</span>
+                <select id="diffSort">
+                  <option value="delta">按增长大小</option>
+                  <option value="pct">按增长百分比</option>
+                  <option value="size">按当前体积</option>
+                </select>
+                <span class="dm-sub">筛选</span>
+                <button class="btn tiny on dfilter" data-f="all">全部</button>
+                <button class="btn tiny dfilter" data-f="grow">仅增长</button>
+                <button class="btn tiny dfilter" data-f="add">新增</button>
+                <button class="btn tiny dfilter" data-f="del">删除</button>
+                <span class="grow" style="flex: 1"></span>
+                <button class="btn tiny" onclick="toggleAll(true)">展开全部</button>
+                <button class="btn tiny" onclick="toggleAll(false)">折叠全部</button>
+              </div>
+            </div>
+
+            <div class="dm-warnbar" id="incompleteBanner" hidden>
+              <span class="ico">!</span>
+              <span><b>当前对比包含不完整快照（#12，权限不足 128 处）：</b>下列数值仅供排查参考，不给出精确变化结论；百分比列已隐藏，导出功能已禁用。请改用两份「完整」快照。</span>
+            </div>
+
+            <div class="dm-grid g-4">
+              <div class="dm-card kpi up"><span class="kpi-label">净变化</span><span class="kpi-val">+17.1<small>GB</small></span><span class="kpi-foot">418.2 → 435.3 GB</span></div>
+              <div class="dm-card kpi"><span class="kpi-label">新增 / 删除</span><span class="kpi-val" style="font-size: 18px">1,203 <small>/ 328</small></span><span class="kpi-foot">项（文件 + 目录）</span></div>
+              <div class="dm-card kpi"><span class="kpi-label">变大 / 变小</span><span class="kpi-val" style="font-size: 18px">5,412 <small>/ 1,087</small></span><span class="kpi-foot">项</span></div>
+              <div class="dm-card kpi"><span class="kpi-label">参与对比</span><span class="kpi-val" style="font-size: 18px">2 <small>份完整快照</small></span><span class="kpi-foot">同根目录 C:\ · 可出精确结论</span></div>
+            </div>
+
+            <div class="dm-card" style="min-height: 0">
+              <div class="dm-head">
+                <span class="dm-title">目录变化树</span>
+                <span class="dm-sub">点击 ▶ 逐级展开到文件 · 右键行可在资源管理器中打开</span>
+                <span class="dm-taglist">
+                  <span class="bd add">新增</span><span class="bd del">删除</span>
+                  <span class="bd up">变大</span><span class="bd down">变小</span><span class="bd same">未变</span>
+                </span>
+              </div>
+              <div class="tree-scroll">
+                <table class="dm-table tree" id="treeTable">
+                  <thead>
+                    <tr>
+                      <th style="min-width: 330px">名称 / 路径</th><th style="width: 54px">类型</th>
+                      <th class="num" style="width: 100px">基准 A</th><th class="num" style="width: 100px">对比 B</th>
+                      <th class="num" style="width: 104px">变化</th><th class="num" style="width: 82px">变化 %</th>
+                      <th style="width: 76px">标记</th><th style="width: 88px">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="node" data-node="n1" data-parent="" data-status="grow" data-delta="4.82" data-pct="38.9" data-size="17.2">
+                      <td><button class="twisty" aria-label="展开">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono dm-strong">C:\Users\25351\AppData\Local\Temp</span></span></td>
+                      <td>目录</td><td class="num">12.40 GB</td><td class="num">17.20 GB</td>
+                      <td class="num val-up">+4.82 GB</td><td class="num">+38.9%</td><td><span class="bd up">变大</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n1a" data-parent="n1" data-status="grow" data-delta="3.8" data-pct="181" data-size="5.9" hidden>
+                      <td style="padding-left: 26px"><button class="twisty" aria-label="展开">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono">msedge_download</span></span></td>
+                      <td>目录</td><td class="num">2.10 GB</td><td class="num">5.90 GB</td>
+                      <td class="num val-up">+3.80 GB</td><td class="num">+181.0%</td><td><span class="bd up">变大</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n1a1" data-parent="n1a" data-status="add" data-delta="1.42" data-pct="100" data-size="1.42" hidden>
+                      <td style="padding-left: 52px"><button class="twisty leaf">▶</button><span class="node-name"><span class="ico file">📄</span><span class="dm-mono">setup_x64.exe</span></span></td>
+                      <td>文件</td><td class="num">—</td><td class="num">1.42 GB</td>
+                      <td class="num val-up">+1.42 GB</td><td class="num">新增</td><td><span class="bd add">新增</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n1b" data-parent="n1" data-status="grow" data-delta="0.6" data-pct="14" data-size="4.9" hidden>
+                      <td style="padding-left: 26px"><button class="twisty leaf">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono">workbuddy-cache</span></span></td>
+                      <td>目录</td><td class="num">4.30 GB</td><td class="num">4.90 GB</td>
+                      <td class="num val-up">+0.60 GB</td><td class="num">+14.0%</td><td><span class="bd up">变大</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n2" data-parent="" data-status="grow" data-delta="3.11" data-pct="45.7" data-size="9.9">
+                      <td><button class="twisty leaf">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono dm-strong">C:\Users\25351\.workbuddy\plugins</span></span></td>
+                      <td>目录</td><td class="num">6.80 GB</td><td class="num">9.90 GB</td>
+                      <td class="num val-up">+3.11 GB</td><td class="num">+45.7%</td><td><span class="bd up">变大</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n3" data-parent="" data-status="grow" data-delta="1.94" data-pct="10.7" data-size="20.1">
+                      <td><button class="twisty leaf">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono dm-strong">C:\Windows\WinSxS</span></span></td>
+                      <td>目录</td><td class="num">18.20 GB</td><td class="num">20.10 GB</td>
+                      <td class="num val-up">+1.94 GB</td><td class="num">+10.7%</td><td><span class="bd up">变大</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n4" data-parent="" data-status="add" data-delta="1.26" data-pct="100" data-size="1.26">
+                      <td><button class="twisty leaf">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono dm-strong">C:\Users\25351\Downloads\pudi-tools\node_modules</span></span></td>
+                      <td>目录</td><td class="num">—</td><td class="num">1.26 GB</td>
+                      <td class="num val-up">+1.26 GB</td><td class="num">新增</td><td><span class="bd add">新增</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node node-deleted" data-node="n5" data-parent="" data-status="del" data-delta="-2.35" data-pct="-100" data-size="0">
+                      <td><button class="twisty leaf">▶</button><span class="node-name"><span class="ico file">📄</span><span class="dm-mono dm-strong">C:\Users\25351\Downloads\old-backup.zip</span></span></td>
+                      <td>文件</td><td class="num">2.35 GB</td><td class="num">—</td>
+                      <td class="num val-down">−2.35 GB</td><td class="num">−100%</td><td><span class="bd del">删除</span></td>
+                      <td><button class="btn tiny" disabled>已不存在</button></td>
+                    </tr>
+                    <tr class="node" data-node="n6" data-parent="" data-status="grow" data-delta="0.88" data-pct="10.9" data-size="8.98">
+                      <td><button class="twisty leaf">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono dm-strong">C:\Users\25351\Downloads</span></span></td>
+                      <td>目录</td><td class="num">8.10 GB</td><td class="num">8.98 GB</td>
+                      <td class="num val-up">+0.88 GB</td><td class="num">+10.9%</td><td><span class="bd up">变大</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                    <tr class="node" data-node="n7" data-parent="" data-status="shrink" data-delta="-0.41" data-pct="-12.8" data-size="2.79">
+                      <td><button class="twisty leaf">▶</button><span class="node-name"><span class="ico dir">📁</span><span class="dm-mono dm-strong">C:\ProgramData\NVIDIA Corporation</span></span></td>
+                      <td>目录</td><td class="num">3.20 GB</td><td class="num">2.79 GB</td>
+                      <td class="num val-down">−0.41 GB</td><td class="num">−12.8%</td><td><span class="bd down">变小</span></td>
+                      <td><button class="btn tiny" onclick="toast('示意：explorer /select')">打开</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="dm-hint">目录行显示的是「整棵子树的递归汇总」，展开后可见贡献来源；父目录的变化量不等于子行简单相加（还有直属文件与未展开项），前端不会把它们相加展示，避免重复计数。</div>
+            </div>
+            <div class="footnote">设计说明：5 种标记用色遵循「增长=暖色 / 缩小=冷色 / 新增=强调青 / 删除=灰红」，与软件强调色体系一致，深浅主题均有足够对比度。</div>
+          </section>
+
+          <!-- ==================== 扫描设置 ==================== -->
+          <section class="dm-view" data-view="settings" hidden>
+            <div class="dm-grid g-2">
+              <div class="dm-card">
+                <div class="dm-head">
+                  <span class="dm-title">自动扫描 · Windows 任务计划程序</span>
+                  <span class="bd ok">已注册</span>
+                </div>
+                <div class="dm-hint">由 Windows 任务计划程序在指定时间拉起本程序执行「静默扫描 C:\ → 写库 → 退出」，主程序无须常驻、不占用后台资源。自动与手动扫描的目标恒为 <span class="dm-mono">C:\</span>。</div>
+                <div class="dm-grid g-2">
+                  <label class="dm-field"><span>频率</span><select><option>每日</option><option>每周</option></select></label>
+                  <label class="dm-field"><span>执行时间</span><input type="time" value="09:00" /></label>
+                  <label class="dm-field"><span>每周（每周模式生效）</span><select><option>周一</option><option>周二</option><option>周日</option></select></label>
+                  <label class="dm-field"><span>扫描目标（固定）</span><input type="text" value="C:\" readonly title="v1 只扫描 C 盘，不开放目录选择" /></label>
+                </div>
+                <label class="dm-field"><span>任务计划程序中的任务名</span><input type="text" class="dm-mono" value="PudiTools_DiskScan_Daily" /></label>
+                <label class="dm-lbl"><input type="checkbox" checked /> 启用该计划任务</label>
+                <label class="dm-lbl"><input type="checkbox" checked /> 错过计划时间后尽快补扫一次</label>
+                <div class="dm-row">
+                  <button class="btn primary" onclick="toast('示意：重新注册 / 更新任务')">注册 / 更新任务</button>
+                  <button class="btn" onclick="toast('示意：立即运行一次静默扫描')">立即运行一次</button>
+                  <button class="btn danger" onclick="toast('示意：移除任务（需二次确认）')">移除任务</button>
+                </div>
+              </div>
+
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">扫描与安全选项</span></div>
+                <table class="dm-table">
+                  <tbody>
+                    <tr><td>扫描范围</td><td><span class="bd info">C:\ 固定（不可更改）</span></td></tr>
+                    <tr><td>读取文件内容</td><td><span class="bd ok">禁止（仅元数据）</span></td></tr>
+                    <tr><td>跟随符号链接 / Junction</td><td><label class="dm-lbl"><input type="checkbox" /> 跟随（默认关闭，不建议）</label></td></tr>
+                    <tr><td>跳过重解析点</td><td><label class="dm-lbl"><input type="checkbox" checked /> 开启</label></td></tr>
+                    <tr><td>并行线程数</td><td><input type="number" value="8" min="1" max="32" style="width: 74px" /> <span class="dm-sub">jwalk 并行遍历</span></td></tr>
+                    <tr><td>批量写入条数 / 事务</td><td><input type="number" value="2000" min="100" step="100" style="width: 90px" /></td></tr>
+                    <tr><td>进度事件节流</td><td><input type="number" value="100" min="30" step="10" style="width: 74px" /> <span class="dm-sub">ms</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="dm-warnbar">
+                  <span class="ico">!</span>
+                  <span><b>安全约束：</b>扫描只读目录项元数据，不打开、不上传文件内容；不自动删除任何系统文件；软件内的「删除」仅指删除自己数据库中的快照记录，并需二次确认。</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dm-card">
+              <div class="dm-head"><span class="dm-title">历史清理</span><span class="dm-sub">与「快照管理」页共用同一配置</span></div>
+              <div class="dm-row">
+                <label class="dm-field" style="min-width: 150px"><span>最大快照数量</span><input type="number" value="30" /></label>
+                <label class="dm-field" style="min-width: 150px"><span>保留天数</span><input type="number" value="90" /></label>
+                <label class="dm-lbl"><input type="checkbox" checked /> 自动清理</label>
+                <label class="dm-lbl"><input type="checkbox" checked /> 至少保留最近 3 份完整快照</label>
+                <button class="btn primary" onclick="toast('示意：已保存配置')">保存配置</button>
+                <button class="btn" onclick="switchView('snapshots')">查看快照 →</button>
+              </div>
+            </div>
+            <div class="footnote">设计说明：v1 没有「选择扫描目标」这一步，手动扫描与计划任务共用固定的 <span class="dm-mono">C:\</span>；未来若需要多盘，只需新增监测目标表并把该常量改为配置项。</div>
+          </section>
+
+          <!-- ==================== 规划说明 ==================== -->
+          <section class="dm-view" data-view="plan" hidden>
+            <div class="dm-grid g-2">
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">项目结构</span><span class="dm-sub">Tauri 2 + Rust + React 18 + TS + SQLite · 仅 C:\</span></div>
+                <pre class="dm-code">pudi-tools/
+├─ src/
+│  ├─ index.html · styles.css      <span class="c"># 现有页签（原生 JS，风格基准）</span>
+│  ├─ js/main.js                   <span class="c"># 注册新页签 + 挂载子应用 + 全局 drop</span>
+│  └─ diskmon/                     <span class="c"># 新增：Vite 构建的 React + TS 子应用</span>
+│     ├─ main.tsx · App.tsx
+│     ├─ pages/
+│     │  ├─ Overview.tsx           <span class="c"># 磁盘量 / 最近扫描 / 排行 / 趋势</span>
+│     │  ├─ Scan.tsx               <span class="c"># 进度 / 当前路径 / 取消 / 异常</span>
+│     │  ├─ Snapshots.tsx          <span class="c"># 快照列表 / 清理 / 选 A</span>
+│     │  ├─ DiffTree.tsx           <span class="c"># 双快照对比 / 树 / 排序筛选</span>
+│     │  └─ Settings.tsx           <span class="c"># 计划任务 / 扫描选项</span>
+│     ├─ components/
+│     │  ├─ TreeTable.tsx · TrendChart.tsx
+│     │  ├─ DiskBar.tsx · StatusBadge.tsx
+│     ├─ lib/  ipc.ts · format.ts · types.ts
+│     └─ vite.config.ts            <span class="c"># 产物注入现有前端，共享 CSS 变量</span>
+├─ src-tauri/
+│  ├─ Cargo.toml                   <span class="c"># jwalk / rusqlite(bundled) / serde</span>
+│  │                              <span class="c"># tokio / windows-sys / tauri 2</span>
+│  └─ src/
+│     ├─ lib.rs                    <span class="c"># 建表 + 注册 commands</span>
+│     └─ diskmon/
+│        ├─ scanner.rs             <span class="c"># jwalk 并行 + AtomicBool 取消 + 事件</span>
+│        ├─ aggregate.rs           <span class="c"># 后序递归汇总（单测重点）</span>
+│        ├─ db.rs                  <span class="c"># 批量事务 / CRUD / 清理</span>
+│        ├─ diff.rs                <span class="c"># 全外连接对比（单测重点）</span>
+│        ├─ volume.rs              <span class="c"># 仅查询 C 盘卷容量</span>
+│        ├─ schedule.rs            <span class="c"># schtasks 每日/每周注册</span>
+│        ├─ reveal.rs              <span class="c"># explorer /select 打开位置</span>
+│        └─ commands.rs            <span class="c"># Tauri IPC 边界</span>
+└─ src-tauri/src/diskmon/tests/    <span class="c"># Rust #[cfg(test)] + 临时目录夹具</span></pre>
+                <div class="dm-hint"><b>集成方式：</b>现有工程是无打包器的原生 JS，React 子应用由 Vite 单独构建，产物以挂载点方式注入新的 <span class="dm-mono">page-diskmon</span> 页签，复用 <span class="dm-mono">styles.css</span> 主题变量；IPC 统一走 <span class="dm-mono">window.__TAURI__.core.invoke</span> / 事件。<br /><b>范围收敛：</b>v1 扫描根恒为常量 <span class="dm-mono">C:\</span>，因此不需要目录选择器、多目标管理、跨盘路径归一化等模块；<span class="dm-mono">scanner.rs</span> / <span class="dm-mono">volume.rs</span> / <span class="dm-mono">schedule.rs</span> 都直接绑定该常量，后续若要放开多盘，只需把它提升为配置并补一层 targets 表。</div>
+              </div>
+
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">SQLite 表结构（v1）</span><span class="dm-sub">WAL + 外键级联</span></div>
+                <pre class="dm-code">PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA foreign_keys = ON;
+
+<span class="c">-- 一次扫描 = 一份快照</span>
+CREATE TABLE snapshots (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  root_path    TEXT    NOT NULL DEFAULT 'C:\', <span class="c">-- v1 固定，不开放选择</span>
+  started_at   INTEGER NOT NULL,        <span class="c">-- Unix ms</span>
+  finished_at  INTEGER,
+  status       TEXT    NOT NULL,        <span class="c">-- running/complete/partial/cancelled/failed</span>
+  file_count   INTEGER NOT NULL DEFAULT 0,
+  dir_count    INTEGER NOT NULL DEFAULT 0,
+  total_bytes  INTEGER NOT NULL DEFAULT 0, <span class="c">-- 递归汇总，非条目累加</span>
+  error_count  INTEGER NOT NULL DEFAULT 0,
+  is_auto      INTEGER NOT NULL DEFAULT 0,
+  note         TEXT
+);
+
+<span class="c">-- 条目：文件原始大小 + 目录汇总大小；path 为规范化绝对/相对键</span>
+CREATE TABLE entries (
+  snapshot_id  INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+  path         TEXT    NOT NULL,
+  parent_path  TEXT,                   <span class="c">-- 建树用</span>
+  name         TEXT    NOT NULL,
+  kind         TEXT    NOT NULL,        <span class="c">-- dir / file</span>
+  size_bytes   INTEGER NOT NULL,        <span class="c">-- 目录=子树汇总</span>
+  own_bytes    INTEGER NOT NULL DEFAULT 0, <span class="c">-- 目录直属文件大小</span>
+  file_count   INTEGER NOT NULL DEFAULT 0,
+  ext          TEXT,                    <span class="c">-- 文件类型</span>
+  mtime        INTEGER,
+  is_reparse   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (snapshot_id, path)
+);
+CREATE INDEX idx_entries_parent ON entries(snapshot_id, parent_path);
+CREATE INDEX idx_entries_size   ON entries(snapshot_id, size_bytes DESC);
+
+<span class="c">-- 扫描异常：权限不足 / 文件消失 / IO / 重解析点跳过</span>
+CREATE TABLE scan_errors (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_id  INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+  path         TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  message      TEXT
+);
+
+<span class="c">-- 键值配置：最大快照数 / 保留天数 / 线程数 / 批量条数</span>
+CREATE TABLE settings ( key TEXT PRIMARY KEY, value TEXT NOT NULL );
+
+<span class="c">-- 计划任务登记（实际任务在 Windows 任务计划程序里）</span>
+CREATE TABLE schedules (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  name       TEXT NOT NULL UNIQUE,
+  kind       TEXT NOT NULL,     <span class="c">-- daily / weekly</span>
+  time_of_day TEXT NOT NULL,    <span class="c">-- HH:MM</span>
+  weekday    INTEGER,
+  enabled    INTEGER NOT NULL DEFAULT 1,
+  task_name  TEXT
+);</pre>
+              </div>
+            </div>
+
+            <div class="dm-grid g-2">
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">关键算法与正确性约束</span></div>
+                <div class="dm-steps">
+                  <div class="dm-step"><b>01 扫描</b><span>根目录恒为 <span class="dm-mono">C:\</span>；jwalk 并行遍历，<span class="dm-mono">follow_links(false)</span>；只取 DirEntry 元数据，绝不开文件；重解析点直接 prune，防止循环与重复计数。AtomicBool 取消标志每个条目检查一次。</span></div>
+                  <div class="dm-step"><b>02 汇总</b><span>按路径深度倒序做<b>后序聚合</b>：<span class="dm-mono">dir.size = 直属文件大小 + Σ 子目录已聚合 size</span>。每个文件只归属其直接父目录一次；根的 <span class="dm-mono">total_bytes</span> 取汇总结果，而非把 entries 全部相加。</span></div>
+                  <div class="dm-step"><b>03 写入</b><span>后台线程消费通道，每 2,000 条一个事务；进度事件 100ms 节流推送；取消时回滚当前事务并把快照标记 cancelled，不落半份数据。</span></div>
+                  <div class="dm-step"><b>04 对比</b><span>以规范化 path 做全外连接，得到 added / removed / grown / shrunk / unchanged；<span class="dm-mono">pct = (B-A)/A</span>，A=0 时显示「新增」而非无穷大；<b>任一快照非 complete 时强制显示警示、隐藏精确百分比、禁用精确结论导出</b>。</span></div>
+                  <div class="dm-step"><b>05 安全</b><span>不读内容、不上传、不自动删除系统文件；「删除快照」只删 DB 记录并需二次确认；资源管理器打开只读调用 explorer /select。</span></div>
+                </div>
+              </div>
+              <div class="dm-card">
+                <div class="dm-head"><span class="dm-title">测试计划</span><span class="dm-sub">验证目录大小统计与快照对比正确性</span></div>
+                <div class="dm-steps">
+                  <div class="dm-step"><b>T1</b><span><span class="dm-mono">aggregate.rs</span>：3 层嵌套 + 空目录 + 同名目录 + 直属文件，断言每个目录汇总值等于手工计算；根汇总 = 所有直属项之和；硬链接 / 重解析点不被重复计入。</span></div>
+                  <div class="dm-step"><b>T2</b><span><span class="dm-mono">diff.rs</span>：构造覆盖五态的路径集合，断言 delta / pct / status；A=0 时百分比语义；路径大小写与分隔符规范化后能正确配对。</span></div>
+                  <div class="dm-step"><b>T3</b><span>集成：<b>测试夹具用临时目录</b>（仅测试代码，产品路径固定 C:\）建树 → 扫描 A → 增/删/改文件 → 扫描 B → 断言 Top-N 增长目录及字节数与预期完全一致，且父目录变化不被子目录重复放大。</span></div>
+                  <div class="dm-step"><b>T4</b><span>异常：注入权限不足与文件消失，断言错误落库、快照状态为 partial、对比接口拒绝给出精确结论。</span></div>
+                  <div class="dm-step"><b>T5</b><span>前端 Vitest：字节/日期格式化、树展开折叠、三种排序与筛选逻辑；取消扫描时进度事件停止。</span></div>
+                  <div class="dm-step"><b>T6</b><span>大规模夹具（10 万小文件）验证批量写入耗时与内存上限，避免超大目录 OOM。</span></div>
+                </div>
+                <div class="dm-row">
+                  <span class="bd info">阶段 1 · 设计稿（本文件）</span>
+                  <span class="bd same">阶段 2 · Rust 扫描/汇总/DB + 单测</span>
+                  <span class="bd same">阶段 3 · React 页面 + IPC</span>
+                  <span class="bd same">阶段 4 · 计划任务/清理</span>
+                  <span class="bd same">阶段 5 · 集成测试与打包</span>
+                </div>
+              </div>
+            </div>
+            <div class="footnote">本页为规划说明，与界面设计同属交付物；范围已收敛为「仅扫描统计 C 盘」，确认结构与表设计后即可进入阶段 2 实现。</div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="dm-toast" id="dmToast"></div>
+
+    <script>
+      // ---------- 主题（与软件一致：html.light + localStorage） ----------
+      const root = document.documentElement;
+      try { if (localStorage.getItem('dmTheme') === 'dark') root.classList.remove('light'); } catch (e) {}
+      function syncThemeIcon() {
+        const light = root.classList.contains('light');
+        document.getElementById('themeIcon').innerHTML = light
+          ? '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />'
+          : '<circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />';
+      }
+      syncThemeIcon();
+      document.getElementById('themeBtn').addEventListener('click', () => {
+        const light = root.classList.toggle('light');
+        try { localStorage.setItem('dmTheme', light ? 'light' : 'dark'); } catch (e) {}
+        syncThemeIcon();
+        requestAnimationFrame(() => { placeMainInd(); placeDmInd(); });
+      });
+
+      // ---------- 药丸指示器 ----------
+      function placePill(ind, el) {
+        if (!ind || !el) return;
+        ind.style.setProperty('--x', el.offsetLeft + 'px');
+        ind.style.setProperty('--y', el.offsetTop + 'px');
+        ind.style.setProperty('--w', el.offsetWidth + 'px');
+        ind.style.setProperty('--h', el.offsetHeight + 'px');
+        ind.classList.add('on');
+      }
+      function placeMainInd() { placePill(document.getElementById('mainInd'), document.getElementById('tabDisk')); }
+      function placeDmInd() {
+        const active = document.querySelector('.dm-tab.active');
+        placePill(document.getElementById('dmInd'), active);
+      }
+      requestAnimationFrame(() => { placeMainInd(); placeDmInd(); });
+      window.addEventListener('resize', () => { placeMainInd(); placeDmInd(); });
+      // 让激活页签滚入可视区
+      requestAnimationFrame(() => document.getElementById('tabDisk').scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+
+      // ---------- 内层页签切换 ----------
+      const views = [...document.querySelectorAll('.dm-view')];
+      function switchView(name) {
+        const btn = document.querySelector('.dm-tab[data-view="' + name + '"]');
+        if (!btn) return;
+        document.querySelectorAll('.dm-tab').forEach((b) => b.classList.toggle('active', b === btn));
+        views.forEach((v) => (v.hidden = v.dataset.view !== name));
+        document.querySelector('.dm-views').scrollTop = 0;
+        placeDmInd();
+      }
+      document.querySelectorAll('.dm-tab').forEach((b) => b.addEventListener('click', () => switchView(b.dataset.view)));
+
+      // ---------- 轻提示 ----------
+      let toastTimer;
+      function toast(msg) {
+        const el = document.getElementById('dmToast');
+        el.textContent = msg;
+        el.classList.add('on');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('on'), 2200);
+      }
+
+      // ---------- 排行榜排序（演示三种排序） ----------
+      document.getElementById('rankSort').addEventListener('change', (e) => {
+        const key = e.target.value;
+        const tbody = document.querySelector('#rankTable tbody');
+        const rows = [...tbody.querySelectorAll('tr')];
+        rows.sort((a, b) => Number(b.dataset[key]) - Number(a.dataset[key]));
+        rows.forEach((r) => tbody.appendChild(r));
+      });
+
+      // ---------- 快照 A/B ----------
+      const snapNames = {
+        '14': '#14 · 11-14 09:12 · 完整', '13': '#13 · 11-13 09:08 · 完整',
+        '12': '#12 · 11-11 09:11 · 不完整', '11': '#11 · 11-09 21:30 · 完整',
+        '10': '#10 · 11-08 09:07 · 完整', '9': '#9 · 11-07 18:42 · 已取消'
+      };
+      const selA = document.getElementById('selA');
+      const selB = document.getElementById('selB');
+      Object.keys(snapNames).forEach((k) => {
+        const o = document.createElement('option'); o.value = k; o.textContent = snapNames[k];
+        selA.appendChild(o.cloneNode(true)); selB.appendChild(o);
+      });
+      selA.value = '10'; selB.value = '14';
+      function refreshBanner() {
+        const bad = selA.value === '12' || selB.value === '12' || selA.value === '9' || selB.value === '9';
+        document.getElementById('incompleteBanner').hidden = !bad;
+      }
+      selA.addEventListener('change', refreshBanner);
+      selB.addEventListener('change', refreshBanner);
+      function swapSnapshots() { const a = selA.value; selA.value = selB.value; selB.value = a; refreshBanner(); toast('已交换基准 / 对比快照'); }
+      function compareSelected() {
+        const picked = document.querySelector('input[name="snapA"]:checked');
+        if (picked) selA.value = picked.value;
+        refreshBanner();
+        switchView('diff');
+        toast('已载入所选快照，可在对比页调整 B');
+      }
+
+      // ---------- 变化对比：排序 / 筛选 / 树展开 ----------
+      const treeBody = document.querySelector('#treeTable tbody');
+      const treeRows = [...treeBody.querySelectorAll('tr.node')];
+      document.getElementById('diffSort').addEventListener('change', (e) => {
+        const key = e.target.value;
+        const roots = treeRows.filter((r) => !r.dataset.parent);
+        // 按根行排序，再把各自的全部后代整块移动（保持层级顺序）
+        roots.sort((a, b) => Number(b.dataset[key]) - Number(a.dataset[key]));
+        roots.forEach((r) => {
+          treeBody.appendChild(r);
+          const collect = (parentId) => {
+            treeRows.filter((c) => c.dataset.parent === parentId).forEach((c) => {
+              treeBody.appendChild(c); collect(c.dataset.node);
+            });
+          };
+          collect(r.dataset.node);
+        });
+      });
+      document.querySelectorAll('.dfilter').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.dfilter').forEach((b) => b.classList.toggle('on', b === btn));
+          const f = btn.dataset.f;
+          treeRows.forEach((r) => {
+            if (r.dataset.parent) return; // 子行由展开状态控制
+            const s = r.dataset.status;
+            const show = f === 'all' || (f === 'grow' && (s === 'grow' || s === 'add'))
+              || (f === 'add' && s === 'add') || (f === 'del' && s === 'del');
+            r.hidden = !show;
+            if (!show) collapseDeep(r);
+          });
+        });
+      });
+      function collapseDeep(row) {
+        row.classList.remove('expanded');
+        treeRows.filter((c) => c.dataset.parent === row.dataset.node).forEach((c) => { c.hidden = true; collapseDeep(c); });
+      }
+      treeBody.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.twisty');
+        if (!btn || btn.classList.contains('leaf')) return;
+        const row = btn.closest('tr.node');
+        const expanded = row.classList.toggle('expanded');
+        const kids = treeRows.filter((c) => c.dataset.parent === row.dataset.node);
+        kids.forEach((c) => { c.hidden = !expanded; if (!expanded) collapseDeep(c); });
+      });
+      function toggleAll(open) {
+        treeRows.forEach((r) => {
+          if (!r.dataset.parent) { r.hidden = false; r.classList.toggle('expanded', open); }
+          else r.hidden = !open;
+        });
+        if (!open) treeRows.forEach((r) => r.classList.remove('expanded'));
+      }
+    </script>
+  </body>
+</html>

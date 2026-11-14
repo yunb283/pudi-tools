@@ -1,0 +1,273 @@
+/* 磁盘空间变化监测（仅 C 盘）—— 由 design/disk-monitor-design.html 抽取生成。
+   主题变量沿用 src/styles.css；本文件只定义 --dm-* 状态色，并把所有组件样式
+   作用域化到 #page-diskmon，确保与软件其它页签互不干扰。
+   重新生成：npm --prefix diskmon-ui run gen:style */
+:root {
+  --dm-up: #ff9c7e;
+  --dm-up-bg: rgba(255, 140, 105, 0.14);
+  --dm-down: #54d2a0;
+  --dm-down-bg: rgba(70, 205, 150, 0.13);
+  --dm-add: var(--accent-text);
+  --dm-add-bg: var(--accent-tint);
+  --dm-del: #e3a19c;
+  --dm-del-bg: rgba(220, 110, 105, 0.13);
+  --dm-warn: #ffd36b;
+  --dm-warn-bg: rgba(255, 200, 80, 0.12);
+  --dm-code-bg: #14161b;
+  --dm-code-border: #2a2f38;
+}
+html.light {
+  --dm-up: #b9451f;
+  --dm-up-bg: rgba(200, 80, 30, 0.1);
+  --dm-down: #127a49;
+  --dm-down-bg: rgba(20, 140, 90, 0.1);
+  --dm-add: #0a6e8c;
+  --dm-add-bg: rgba(10, 110, 140, 0.1);
+  --dm-del: #9a4640;
+  --dm-del-bg: rgba(170, 60, 55, 0.09);
+  --dm-warn: #8a6112;
+  --dm-warn-bg: rgba(190, 140, 30, 0.13);
+  --dm-code-bg: #f3f5f9;
+  --dm-code-border: #d4d9e3;
+}
+#page-diskmon > #diskmon-root {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+}
+#page-diskmon .dm-shell { flex: 1; min-height: 0; }
+#page-diskmon .dm-views { padding-bottom: 16px; }
+/* 数值列不换行，避免 "+1.80 GB" 被折成两行 */
+#page-diskmon .dm-table th.num, #page-diskmon .dm-table td.num { white-space: nowrap; }
+/* 首页排行榜放在窄栏里，路径列收紧以留出状态徽标 */
+#page-diskmon .dm-table.rank-table .path { max-width: 190px; }
+#page-diskmon .dm-table.rank-table th, #page-diskmon .dm-table.rank-table td { padding: 6px 7px; }
+/* ---------- 页面骨架 ---------- */
+#page-diskmon .dm-shell {
+        flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0;
+        background: var(--bg-panel); border: 1px solid var(--border-panel); border-radius: 4px;
+        overflow: hidden;
+      }
+#page-diskmon .dm-tabs {
+        position: relative; flex: 0 0 auto; display: flex; gap: 2px; align-items: center;
+        padding: 6px 8px 0; border-bottom: 1px solid var(--border-panel);
+      }
+#page-diskmon .dm-ind {
+        position: absolute; left: 0; top: 0; height: var(--h, 28px); width: var(--w, 0px);
+        border-radius: 6px; background: var(--accent-tint); opacity: 0;
+        transform: translate(var(--x, 0px), var(--y, 0px));
+        transition: transform 280ms var(--ease-out), width 280ms var(--ease-out), opacity 160ms ease;
+        pointer-events: none;
+      }
+#page-diskmon .dm-ind::after {
+        content: ""; position: absolute; left: 9px; right: 9px; bottom: 0; height: 2px;
+        border-radius: 2px; background: var(--accent);
+      }
+#page-diskmon .dm-ind.on { opacity: 1; }
+#page-diskmon .dm-tab {
+        position: relative; z-index: 1; background: transparent; border: none; border-radius: 6px;
+        color: var(--text-tab); font-family: inherit; font-size: 13px; padding: 7px 12px;
+        cursor: pointer; white-space: nowrap; transition: color 160ms ease;
+      }
+#page-diskmon .dm-tab:hover { color: var(--text-tab-hover); background: var(--tab-wash); }
+#page-diskmon .dm-tab.active { color: var(--accent-text); }
+#page-diskmon .dm-tabs .grow { flex: 1; }
+#page-diskmon .dm-views { flex: 1; min-height: 0; overflow: auto; }
+#page-diskmon .dm-view { padding: 10px; display: flex; flex-direction: column; gap: 10px; min-height: 100%; }
+/* ---------- 通用卡片 / 标题 ---------- */
+#page-diskmon .dm-grid { display: grid; gap: 10px; }
+#page-diskmon .g-overview { grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); }
+#page-diskmon .g-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#page-diskmon .g-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#page-diskmon .g-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#page-diskmon .dm-card {
+        background: var(--bg-surface); border: 1px solid var(--border-panel);
+        border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 9px;
+        min-width: 0;
+      }
+html.light #page-diskmon .dm-card { background: #ffffff; }
+#page-diskmon .dm-card.transparent { background: transparent; border-style: dashed; }
+#page-diskmon .dm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#page-diskmon .dm-title { color: var(--text-title); font-weight: 600; font-size: 14px; margin-right: auto; }
+#page-diskmon .dm-sub { font-size: 11px; color: var(--muted-6a); }
+#page-diskmon .dm-hint { font-size: 11px; color: var(--muted-6a); line-height: 1.6; }
+#page-diskmon .dm-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#page-diskmon .dm-mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 11px; }
+#page-diskmon .dm-strong { color: var(--text-title); font-weight: 600; }
+/* ---------- KPI ---------- */
+#page-diskmon .kpi { display: flex; flex-direction: column; gap: 5px; }
+#page-diskmon .kpi-label { font-size: 11px; color: var(--muted-a6); }
+#page-diskmon .kpi-val { font-size: 22px; font-weight: 650; color: var(--text-title); line-height: 1.15; }
+#page-diskmon .kpi-val small { font-size: 12px; font-weight: 400; color: var(--muted-a6); margin-left: 3px; }
+#page-diskmon .kpi-foot { font-size: 11px; color: var(--muted-6a); }
+#page-diskmon .kpi.up .kpi-val { color: var(--dm-up); }
+#page-diskmon .kpi.down .kpi-val { color: var(--dm-down); }
+/* ---------- 进度条 / 磁盘条 ---------- */
+#page-diskmon .dm-bar { height: 8px; border-radius: 999px; background: var(--bg-track); overflow: hidden; }
+#page-diskmon .dm-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--accent-fill); }
+#page-diskmon .dm-bar.warn > i { background: linear-gradient(90deg, var(--accent-fill), var(--dm-up)); }
+#page-diskmon .dm-bar.big { height: 14px; }
+#page-diskmon .dm-disk-row { display: grid; grid-template-columns: 46px 1fr 118px; gap: 10px; align-items: center; }
+#page-diskmon .dm-disk-name { font-weight: 600; color: var(--text-title); font-size: 13px; }
+#page-diskmon .dm-disk-num { font-size: 11px; color: var(--muted-a6); text-align: right; white-space: nowrap; }
+/* ---------- 徽标 ---------- */
+#page-diskmon .bd {
+        display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px;
+        font-size: 11px; line-height: 17px; white-space: nowrap; font-weight: 500;
+      }
+#page-diskmon .bd.up { background: var(--dm-up-bg); color: var(--dm-up); }
+#page-diskmon .bd.down { background: var(--dm-down-bg); color: var(--dm-down); }
+#page-diskmon .bd.add { background: var(--dm-add-bg); color: var(--dm-add); }
+#page-diskmon .bd.del { background: var(--dm-del-bg); color: var(--dm-del); }
+#page-diskmon .bd.same { background: var(--bg-ghost3); color: var(--muted-9a3); }
+#page-diskmon .bd.warn { background: var(--dm-warn-bg); color: var(--dm-warn); }
+#page-diskmon .bd.ok { background: var(--dm-down-bg); color: var(--dm-down); }
+#page-diskmon .bd.info { background: var(--accent-tint); color: var(--accent-text); }
+/* ---------- 按钮 / 表单 ---------- */
+#page-diskmon .btn {
+        background: var(--bg-ghost3); color: var(--text-f2); border: 1px solid var(--border-ghost3);
+        padding: 6px 12px; border-radius: 4px; cursor: pointer; font-family: inherit;
+        font-size: 12px; white-space: nowrap;
+      }
+#page-diskmon .btn:hover { background: var(--bg-input-hover); border-color: var(--border-input-hover); }
+#page-diskmon .btn:active { transform: translateY(1px); }
+#page-diskmon .btn:disabled { color: var(--muted-6a); background: var(--bg-ghost2); border-color: var(--border-ghost2); cursor: default; }
+#page-diskmon .btn.primary {
+        background: var(--accent-fill); border-color: transparent; color: var(--on-accent);
+        font-weight: 600; min-height: 32px;
+      }
+#page-diskmon .btn.primary:hover { background: var(--accent-fill-hover); }
+#page-diskmon .btn.tiny { padding: 3px 8px; font-size: 11px; }
+#page-diskmon .btn.danger { color: var(--red-text); }
+#page-diskmon .btn.on { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-text); }
+#page-diskmon select, #page-diskmon input[type="text"], #page-diskmon input[type="number"], #page-diskmon input[type="time"] {
+        background: var(--bg-input); color: var(--text-input); border: 1px solid var(--border-input);
+        border-radius: 4px; padding: 5px 8px; font-family: inherit; font-size: 12px; min-width: 0;
+      }
+#page-diskmon select:focus, #page-diskmon input:focus { outline: none; border-color: var(--accent); }
+#page-diskmon input[type="checkbox"], #page-diskmon input[type="radio"] { accent-color: var(--accent-fill); }
+#page-diskmon label.dm-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-main); cursor: pointer; }
+#page-diskmon .dm-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted-a6); }
+/* ---------- 表格 ---------- */
+#page-diskmon .dm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#page-diskmon .dm-table th {
+        position: sticky; top: 0; z-index: 2; text-align: left; font-weight: 600; font-size: 11px;
+        color: var(--muted-a6); background: var(--bg-surface2); padding: 7px 9px;
+        border-bottom: 1px solid var(--border-panel); white-space: nowrap;
+      }
+#page-diskmon .dm-table td { padding: 7px 9px; border-bottom: 1px solid var(--border-panel); vertical-align: middle; }
+#page-diskmon .dm-table tbody tr:hover { background: var(--accent-tint); }
+#page-diskmon .dm-table td.num, #page-diskmon .dm-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+#page-diskmon .dm-table .path { max-width: 330px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-diskmon .rank {
+        display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px;
+        background: var(--bg-ghost3); color: var(--muted-a6); font-size: 11px; font-weight: 600;
+      }
+#page-diskmon .rank.r1 { background: var(--dm-up-bg); color: var(--dm-up); }
+#page-diskmon .rank.r2 { background: var(--accent-tint); color: var(--accent-text); }
+#page-diskmon .rank.r3 { background: var(--bg-ghost3); color: var(--muted-a6); }
+#page-diskmon .mini-bar { width: 90px; height: 5px; border-radius: 999px; background: var(--bg-track); overflow: hidden; }
+#page-diskmon .mini-bar > i { display: block; height: 100%; background: var(--dm-up); border-radius: 999px; }
+/* ---------- 趋势图 ---------- */
+#page-diskmon .chart-wrap { position: relative; width: 100%; }
+#page-diskmon .chart-wrap svg { display: block; width: 100%; height: auto; }
+#page-diskmon .chart-grid { stroke: var(--border-panel); stroke-width: 1; }
+#page-diskmon .chart-area { fill: var(--accent-tint); }
+#page-diskmon .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+#page-diskmon .chart-dot { fill: var(--bg-panel); stroke: var(--accent); stroke-width: 2; }
+#page-diskmon .chart-label { fill: var(--muted-6a); font-size: 10px; font-family: inherit; }
+#page-diskmon .chart-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted-a6); }
+#page-diskmon .chart-legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; background: var(--accent); vertical-align: middle; margin-right: 5px; }
+/* ---------- 警示条 ---------- */
+#page-diskmon .dm-warnbar {
+        display: flex; align-items: flex-start; gap: 9px; padding: 9px 11px; border-radius: 4px;
+        background: var(--dm-warn-bg); border: 1px solid var(--dm-warn); color: var(--dm-warn); font-size: 12px;
+      }
+#page-diskmon .dm-warnbar b { color: inherit; }
+#page-diskmon .dm-warnbar .ico { flex: none; font-weight: 700; }
+/* ---------- 扫描进度 ---------- */
+#page-diskmon .scan-big { font-size: 30px; font-weight: 650; color: var(--text-title); line-height: 1.1; }
+#page-diskmon .scan-cur {
+        font-family: Consolas, "Cascadia Mono", monospace; font-size: 11px; color: var(--cyan-text2);
+        background: var(--bg-input); border: 1px solid var(--border-input); border-radius: 4px;
+        padding: 7px 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+#page-diskmon .scan-progress { position: relative; height: 16px; border-radius: 4px; background: var(--bg-progress-track); overflow: hidden; }
+#page-diskmon .scan-progress > i {
+        display: block; height: 100%; width: 68%; border-radius: 4px;
+        background: linear-gradient(90deg, var(--accent-fill), var(--accent-fill-hover));
+        position: relative;
+      }
+#page-diskmon .scan-progress > i::after {
+        content: ""; position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+        animation: sweep 1.8s linear infinite;
+      }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+/* ---------- 树形对比 ---------- */
+#page-diskmon .tree-scroll { max-height: 430px; overflow: auto; border: 1px solid var(--border-panel); border-radius: 4px; }
+#page-diskmon .dm-table.tree th { z-index: 3; }
+#page-diskmon .dm-table.tree td { padding: 5px 9px; }
+#page-diskmon .twisty {
+        width: 18px; height: 18px; display: inline-grid; place-items: center; cursor: pointer;
+        border: none; background: transparent; color: var(--muted-a6); border-radius: 3px; font-size: 10px;
+        vertical-align: middle; margin-right: 4px;
+      }
+#page-diskmon .twisty:hover { background: var(--accent-tint); color: var(--accent-text); }
+#page-diskmon tr.expanded > td:first-child .twisty { transform: rotate(90deg); color: var(--accent-text); }
+#page-diskmon .twisty.leaf { visibility: hidden; }
+#page-diskmon .node-name { display: inline-flex; align-items: center; white-space: nowrap; }
+#page-diskmon .node-name .ico { margin-right: 6px; font-size: 12px; }
+#page-diskmon .ico.dir { color: var(--yellow-text); }
+#page-diskmon .ico.file { color: var(--muted-a6); }
+#page-diskmon .val-up { color: var(--dm-up); font-weight: 600; }
+#page-diskmon .val-down { color: var(--dm-down); font-weight: 600; }
+#page-diskmon tr.node-deleted td { opacity: .72; }
+/* ---------- 规划说明 ---------- */
+#page-diskmon pre.dm-code {
+        background: var(--dm-code-bg); border: 1px solid var(--dm-code-border); border-radius: 4px;
+        padding: 10px 12px; overflow: auto; font-family: Consolas, "Cascadia Mono", monospace;
+        font-size: 11px; line-height: 1.65; color: var(--text-main); white-space: pre;
+      }
+#page-diskmon pre.dm-code .c { color: var(--muted-6a); }
+#page-diskmon .dm-steps { display: flex; flex-direction: column; gap: 7px; }
+#page-diskmon .dm-step { display: flex; gap: 9px; font-size: 12px; line-height: 1.6; }
+#page-diskmon .dm-step > b { flex: none; color: var(--accent-text); font-weight: 600; }
+#page-diskmon .dm-taglist { display: flex; flex-wrap: wrap; gap: 6px; }
+#page-diskmon .dm-toast {
+        position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 12px);
+        background: var(--bg-toast); border: 1px solid var(--border-toast); color: var(--text-f2);
+        padding: 8px 14px; border-radius: 6px; font-size: 12px; box-shadow: 0 8px 24px var(--scrim);
+        opacity: 0; pointer-events: none; transition: opacity 200ms ease, transform 200ms var(--ease-out); z-index: 99;
+      }
+#page-diskmon .dm-toast.on { opacity: 1; transform: translate(-50%, 0); }
+#page-diskmon .footnote { font-size: 11px; color: var(--muted-6a); padding: 2px 2px 6px; line-height: 1.6; }
+/* 首页醒目扫描入口：主色实心 + 呼吸光晕，卡片边框同步强调 */
+#page-diskmon .kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+#page-diskmon .dm-card.cta-card { border-color: var(--accent); }
+#page-diskmon .dm-scan-cta {
+        display: inline-flex; align-items: center; gap: 6px; flex: none;
+        padding: 6px 12px; border: 1px solid transparent; border-radius: 5px;
+        background: var(--accent-fill); color: var(--on-accent);
+        font-size: 12px; font-weight: 700; letter-spacing: .2px; cursor: pointer;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 0 var(--accent-tint);
+        animation: dm-cta-glow 2.4s ease-in-out infinite;
+        transition: background 160ms var(--ease-out), transform 160ms var(--ease-out);
+      }
+#page-diskmon .dm-scan-cta .cta-ico { font-size: 10px; line-height: 1; }
+#page-diskmon .dm-scan-cta:hover { background: var(--accent-fill-hover); transform: translateY(-1px); }
+#page-diskmon .dm-scan-cta:disabled, #page-diskmon .dm-scan-cta.busy { animation: none; opacity: .65; cursor: default; transform: none; }
+@keyframes dm-cta-glow {
+        0%, 100% { box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 0 var(--accent-tint); }
+        50% { box-shadow: 0 2px 10px rgba(0, 0, 0, .18), 0 0 0 4px var(--accent-tint); }
+      }
+@media (prefers-reduced-motion: reduce) {
+#page-diskmon .dm-scan-cta { animation: none; }
+}
+/* 首页文件夹占用排行 */
+#page-diskmon .dm-table.folder-table .path { max-width: 420px; }
+#page-diskmon .dm-table.folder-table th, #page-diskmon .dm-table.folder-table td { padding: 6px 8px; }
+#page-diskmon .dm-bar.folder-bar { height: 7px; width: 100%; min-width: 110px; }
+@media (max-width: 1080px) {
+#page-diskmon .g-overview { grid-template-columns: 1fr; }
+#page-diskmon .g-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#page-diskmon .g-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

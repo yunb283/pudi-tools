@@ -114,6 +114,7 @@ const tabDl = document.getElementById('tab-dl');
 const tabClock = document.getElementById('tab-clock');
 const tabRename = document.getElementById('tab-rename');
 const tabSysInfo = document.getElementById('tab-sysinfo');
+const tabDiskmon = document.getElementById('tab-diskmon');
 const tabShutdown = document.getElementById('tab-shutdown');
 const pageSplit = document.getElementById('page-split');
 const pageMerge = document.getElementById('page-merge');
@@ -135,6 +136,7 @@ const pageWord = document.getElementById('page-word');
 const pageClock = document.getElementById('page-clock');
 const pageRename = document.getElementById('page-rename');
 const pageSysInfo = document.getElementById('page-sysinfo');
+const pageDiskmon = document.getElementById('page-diskmon');
 const pageShutdown = document.getElementById('page-shutdown');
 
 // 科幻纹理生成：iframe 懒加载 + 缩放 + 保存桥接都收在这个模块里
@@ -278,6 +280,7 @@ const tabs = [
   ['clock', tabClock, pageClock, []],
   ['rename', tabRename, pageRename, [renameApi]],
   ['sysinfo', tabSysInfo, pageSysInfo, []],
+  ['diskmon', tabDiskmon, pageDiskmon, []],
   ['shutdown', tabShutdown, pageShutdown, []],
 ];
 
@@ -335,6 +338,7 @@ tabWord.addEventListener('click', () => showTab('word'));
 tabClock.addEventListener('click', () => showTab('clock'));
 tabRename.addEventListener('click', () => showTab('rename'));
 tabSysInfo.addEventListener('click', () => showTab('sysinfo'));
+tabDiskmon.addEventListener('click', () => showTab('diskmon'));
 tabShutdown.addEventListener('click', () => showTab('shutdown'));
 
 // 页签微交互:悬停时半透明块跟手、点击出涟漪、按下回弹(回弹在 CSS 的 :active 里)
