@@ -329,24 +329,57 @@
             <rect x="0.5" y="2.5" width="7" height="7" rx="1" />
           </svg>
         </button>
-        <button
-          class="cap-btn cap-close"
-          id="win-close"
-          aria-label="关闭"
-          title="关闭"
-        >
-          <svg
-            viewBox="0 0 10 10"
-            width="10"
-            height="10"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1"
-            aria-hidden="true"
+        <div class="close-wrap">
+          <button
+            class="cap-btn cap-more"
+            id="win-close-more"
+            aria-label="关闭选项"
+            title="关闭选项"
+            aria-haspopup="true"
+            aria-expanded="false"
           >
-            <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 10 10"
+              width="8"
+              height="8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.2"
+              aria-hidden="true"
+            >
+              <path d="M1.5 3.5l3.5 3.5 3.5-3.5" />
+            </svg>
+          </button>
+          <button
+            class="cap-btn cap-close"
+            id="win-close"
+            aria-label="关闭（最小化到托盘）"
+            title="关闭（最小化到托盘）"
+          >
+            <svg
+              viewBox="0 0 10 10"
+              width="10"
+              height="10"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1"
+              aria-hidden="true"
+            >
+              <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
+            </svg>
+          </button>
+          <!-- 关闭选项面板：退出应用走这里；点 X 本身只是最小化到托盘 -->
+          <div
+            class="close-pop"
+            id="close-pop"
+            hidden
+            data-tauri-drag-region="false"
+          >
+            <button class="close-pop-item danger" id="app-exit" type="button">
+              退出应用
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2741,7 +2774,7 @@
         </label>
         <label class="chk">
           <input type="checkbox" id="sd-block-close" checked />
-          <span>计时中拦住关闭窗口(点了先提示,再点一次才关)</span>
+          <span>计时中拦住退出应用(点了先提示,再点一次才退)</span>
         </label>
         <button class="btn primary" id="sd-start">开始计时</button>
         <button class="btn" id="sd-cancel" disabled>取消计时</button>

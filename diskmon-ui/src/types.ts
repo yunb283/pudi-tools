@@ -128,6 +128,6 @@ export interface OverviewPayload {
   folder_total_bytes: number;
 }
 
-export type ViewKey = 'overview' | 'scan' | 'snapshots' | 'compare' | 'settings';
+export type ViewKey = 'overview' | 'trend' | 'scan' | 'snapshots' | 'compare' | 'settings';
 export type SortKey = 'growth' | 'pct' | 'size';
 export type FilterKey = 'all' | 'added' | 'removed' | 'grown' | 'shrunk';

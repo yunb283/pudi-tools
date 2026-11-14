@@ -5,7 +5,7 @@ import type {
   OverviewPayload, OverviewRankings, Progress, ScheduleInfo, Settings, ViewKey,
 } from './types';
 import {
-  CompareView, OverviewView, ScanView, SettingsView, SnapshotsView,
+  CompareView, OverviewView, ScanView, SettingsView, SnapshotsView, TrendView,
 } from './views';
 
 const IDLE: Progress = {
@@ -47,6 +47,7 @@ function cacheOverview(data: OverviewPayload) {
 
 const VIEWS: { key: ViewKey; label: string }[] = [
   { key: 'overview', label: '概览首页' },
+  { key: 'trend', label: '历史趋势' },
   { key: 'scan', label: '扫描进度' },
   { key: 'snapshots', label: '快照管理' },
   { key: 'compare', label: '变化对比' },
@@ -267,6 +268,13 @@ export default function App() {
               onStartScan={async () => {
                 if (await run('dm_start_scan', undefined, '扫描已启动')) setView('scan');
               }}
+            />
+          )}
+          {view === 'trend' && (
+            <TrendView
+              {...common}
+              trend={overview?.trend ?? []}
+              onGo={setView}
             />
           )}
           {view === 'scan' && (

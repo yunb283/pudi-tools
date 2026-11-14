@@ -2467,6 +2467,13 @@ fn disable_browser_accelerator_keys(window: &tauri::WebviewWindow) {
     });
 }
 
+/// 标题栏「退出应用」：关闭默认只是最小化到托盘（CloseRequested 被拦下），
+/// 真正退出走这里，绕过拦截直接结束进程。
+#[tauri::command]
+fn app_exit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2487,6 +2494,14 @@ pub fn run() {
             // 计划任务带 --diskmon-silent-scan 启动时，同步扫描完立即退出，不做常驻。
             let dm_init: Result<(), String> = (|| {
                 let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+                // 标识从 com.spritetools.seqtool 统一为 puditools：旧数据目录整体搬过来，
+                // 历史快照不丢。搬迁失败就在新目录重新建库，旧目录原样保留。
+                if let Some(parent) = dir.parent() {
+                    let old = parent.join("com.spritetools.seqtool");
+                    if old.is_dir() && !dir.exists() {
+                        let _ = std::fs::rename(&old, &dir);
+                    }
+                }
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
                 let db_path = dir.join(diskmon::DB_FILE);
                 let mut c = diskmon::db::open(&db_path)?;
@@ -2511,11 +2526,60 @@ pub fn run() {
                     std::process::exit(1);
                 }
             }
+
+            // 托盘：关闭窗口默认最小化到托盘。左键托盘图标恢复窗口，
+            // 右键菜单提供「显示主窗口 / 退出」。
+            {
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+                let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+                let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+                let icon = app.default_window_icon().cloned().ok_or("缺少窗口图标，无法创建托盘")?;
+                TrayIconBuilder::new()
+                    .icon(icon)
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .tooltip("布丁工具箱")
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                    })
+                    .build(app)?;
+            }
             #[cfg(not(windows))]
             let _ = app;
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // 默认最小化到托盘：标题栏 X 由前端 hide()，Alt+F4 这类系统关闭在这里拦下
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            app_exit,
             pick_images,
             pick_dir,
             read_file,

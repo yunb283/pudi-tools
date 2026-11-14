@@ -102,7 +102,6 @@ export function OverviewView(props: CommonProps & {
   const [rankSort, setRankSort] = useState<SortKey>('growth');
   const usedPct = o && o.volume.total > 0 ? (o.volume.used / o.volume.total) * 100 : 0;
   const ranking = o?.rankings?.[rankSort] ?? [];
-  const trend = o?.trend ?? [];
   const folders: FolderRankRow[] = o?.folders ?? [];
   const folderMax = folders.reduce((m, f) => Math.max(m, f.size_bytes), 1);
   const folderTotal = o?.folder_total_bytes ?? 0;
@@ -248,16 +247,49 @@ export function OverviewView(props: CommonProps & {
         ) : <div className="dm-hint">正在读取上次扫描结果…</div>}
       </Card>
 
+      <div className="footnote">首页只做仪表盘与排行，不承载重操作；趋势、扫描、快照、对比各自独立成页。</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────── 历史趋势 ───────────────────────────────
+
+export function TrendView(props: CommonProps & {
+  trend: TrendPoint[];
+  onGo: (v: ViewKey) => void;
+}) {
+  const { trend, onGo } = props;
+  return (
+    <div className="dm-view" data-view="trend">
       <Card title="历史趋势" sub={`最近 ${trend.length} 次快照`} right={
         <div className="dm-row">
-          <button className="btn tiny" onClick={() => onGo('scan')}>扫描进度 →</button>
           <button className="btn tiny" onClick={() => onGo('snapshots')}>查看快照 →</button>
           <button className="btn tiny" onClick={() => onGo('compare')}>变化对比 →</button>
         </div>
       }>
         <TrendChart points={trend} />
       </Card>
-      <div className="footnote">首页只做仪表盘与排行，不承载重操作；扫描、快照、对比各自独立成页。</div>
+
+      <Card title="趋势明细" sub="按扫描时间正序 · 体积为可访问文件逻辑大小之和">
+        <div className="tree-scroll" style={{ maxHeight: 380 }}>
+          <table className="dm-table">
+            <thead><tr><th>#</th><th>扫描时间</th><th className="num">统计体积</th><th className="num">文件数</th><th>状态</th></tr></thead>
+            <tbody>
+              {trend.map((t) => (
+                <tr key={t.id}>
+                  <td className="dm-mono dm-strong">{t.id}</td>
+                  <td className="dm-mono">{fmtDateTime(t.started_at)}</td>
+                  <td className="num dm-strong">{humanBytes(t.total_bytes)}</td>
+                  <td className="num">{t.file_count.toLocaleString()}</td>
+                  <td><Badge cls={statusBadge(t.status)}>{statusLabel(t.status)}</Badge></td>
+                </tr>
+              ))}
+              {!trend.length && <tr><td colSpan={5} className="dm-hint">还没有快照，请先在「扫描进度」页执行一次扫描。</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="dm-hint">趋势统计的是快照内可访问文件的逻辑大小之和，与卷已用空间口径不同，不做直接相减；至少需要两次快照才能绘制曲线。</div>
+      </Card>
     </div>
   );
 }
@@ -301,7 +333,7 @@ export function ScanView(props: CommonProps & {
       <div className="dm-grid g-2">
         <Card title="扫描进度" sub={p.running ? '后台线程运行中' : '空闲'} right={
           <div className="dm-row">
-            <button className="btn primary" disabled={!desktop || busy || p.running} onClick={onStartScan}>开始扫描 C:\</button>
+            <button className="btn primary" disabled={!desktop || busy || p.running} onClick={onStartScan}>{p.running ? '扫描中…' : '开始扫描 C:\\'}</button>
             <button className="btn danger" disabled={!desktop || busy || !p.running} onClick={onCancel}>取消扫描</button>
           </div>
         }>
@@ -629,6 +661,8 @@ export function SettingsView(props: CommonProps & {
   dbPath: string;
 }) {
   const { settings, schedule, scheduleReady, dbPath, desktop, busy, run } = props;
+  const sep = Math.max(dbPath.lastIndexOf('\\'), dbPath.lastIndexOf('/'));
+  const dbDir = sep > 0 ? dbPath.slice(0, sep) : '';
   const [freq, setFreq] = useState<string>(schedule.frequency);
   const [time, setTime] = useState<string>(schedule.time_hhmm);
   const [weekday, setWeekday] = useState<number>(schedule.weekday);
@@ -671,6 +705,7 @@ export function SettingsView(props: CommonProps & {
         <div className="dm-row">
           <label className="dm-field" style={{ width: 180 }}><span>最大快照数量</span><input type="number" min={2} max={500} value={max} onChange={(e) => setMax(Number(e.target.value))} /></label>
           <button className="btn" disabled={!desktop || busy || !Number.isInteger(max) || max < 2 || max > 500} onClick={() => void run('dm_set_settings', { maxSnapshots: max, autoPrune: settings.auto_prune }, '已保存')}>保存</button>
+          <button className="btn" disabled={!desktop || busy || !dbDir} title="在资源管理器中打开数据库所在目录" onClick={() => void run('open_path', { path: dbDir }, '已打开数据库目录')}>打开目录</button>
           <span className="dm-hint">数据库位置：<span className="dm-mono">{dbPath}</span></span>
         </div>
       </Card>

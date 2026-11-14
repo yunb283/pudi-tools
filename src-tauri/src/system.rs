@@ -17,8 +17,8 @@ const WMI_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// 临时脚本 / 结果文件放在 %TEMP%，用完即删。脚本走 -File 执行，避免把整段 PowerShell
 /// 塞进 -Command 时的引号与控制台代码页问题；结果落盘再读，绕开管道编码差异。
-const WMI_SCRIPT_NAME: &str = "seqtool_sysinfo.ps1";
-const WMI_JSON_NAME: &str = "seqtool_sysinfo.json";
+const WMI_SCRIPT_NAME: &str = "puditools_sysinfo.ps1";
+const WMI_JSON_NAME: &str = "puditools_sysinfo.json";
 
 #[derive(Serialize)]
 pub struct InfoField {

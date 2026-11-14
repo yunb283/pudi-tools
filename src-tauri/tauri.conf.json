@@ -2,8 +2,8 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "布丁工具箱",
   "mainBinaryName": "布丁工具箱",
-  "version": "0.1.40",
-  "identifier": "com.spritetools.seqtool",
+  "version": "0.1.41",
+  "identifier": "puditools",
   "build": {
     "frontendDist": "../src"
   },

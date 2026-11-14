@@ -819,6 +819,53 @@ body {
   color: #fff;
 }
 
+/* 关闭选项:关闭钮左侧的小箭头 + 下方「退出应用」面板。
+   点 X 本身只是最小化到托盘,真正退出走面板里那一项 */
+.close-wrap {
+  position: relative;
+  display: flex;
+  height: 100%;
+}
+
+.cap-more {
+  width: 20px;
+}
+
+.close-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  /* 与工具列表面板同级:压在页签行(0/1)之上、模态框(100)之下 */
+  z-index: 90;
+  min-width: 132px;
+  padding: 4px;
+  background: var(--bg-modal);
+  border: 1px solid var(--border-modal);
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.close-pop-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-title);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.close-pop-item:hover {
+  background: var(--cap-hover);
+}
+
+.close-pop-item.danger {
+  color: #e05252;
+}
+
 /* 换肤钮在标题栏置顶钮左边，尺寸、圆形悬停、提示框都由 .pin-btn 那套提供
    （所以这里不能加 overflow:hidden —— 会把 ::after 画在按钮外的提示框裁掉，
    涟漪交给内部的 .ripple-clip 裁）；本块只留它自己的差异 */

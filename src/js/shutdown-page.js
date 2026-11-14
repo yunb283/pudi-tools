@@ -339,7 +339,7 @@ export function initShutdown() {
   refreshTarget();
 
   return {
-    // 关窗口会连计划一起没了，所以 main.js 的关闭按钮要先问一句
+    // 退出会连计划一起没了，所以 main.js 的「退出应用」要先问一句
     isArmed() {
       return state !== 'idle';
     },
@@ -350,10 +350,10 @@ export function initShutdown() {
     reportCloseBlocked() {
       const label = action === 'shutdown' ? '关机' : '重启';
       if (state === 'firing') {
-        setStatus(`${label}已经交给系统，关掉本软件并不会取消它。要撤回请点「中止」；确实要关，再点一次关闭`, true);
+        setStatus(`${label}已经交给系统，退出本软件并不会取消它。要撤回请点「中止」；确实要退，再点一次「退出应用」`, true);
         return;
       }
-      setStatus(`关闭软件会让${label}计划失效。要放弃计划请先点「取消计时」；确实要关，再点一次关闭`, true);
+      setStatus(`退出软件会让${label}计划失效。要放弃计划请先点「取消计时」；确实要退，再点一次「退出应用」`, true);
     },
   };
 }

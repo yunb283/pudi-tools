@@ -918,12 +918,15 @@ const pinIcon = pinBtn.querySelector('.pin-ic');
 const winMin = document.getElementById('win-min');
 const winMax = document.getElementById('win-max');
 const winClose = document.getElementById('win-close');
+const winCloseMore = document.getElementById('win-close-more');
+const closePop = document.getElementById('close-pop');
+const appExitBtn = document.getElementById('app-exit');
 const maxIcon = winMax.querySelector('.ic-max');
 const restoreIcon = winMax.querySelector('.ic-restore');
 const currentWindow = isTauri ? window.__TAURI__.window.getCurrentWindow() : null;
 
 if (!currentWindow) {
-  for (const b of [pinBtn, winMin, winMax, winClose]) b.disabled = true;
+  for (const b of [pinBtn, winMin, winMax, winClose, winCloseMore]) b.disabled = true;
 } else {
   pinBtn.addEventListener('click', (ev) => {
     const on = !pinBtn.classList.contains('on');
@@ -940,17 +943,36 @@ if (!currentWindow) {
 
   winMin.addEventListener('click', () => currentWindow.minimize());
   winMax.addEventListener('click', () => currentWindow.toggleMaximize());
-  // 自动关机计时中关掉窗口就等于计划作废（计时只在软件内守）。第一次点先拦下来，
-  // 切到那一页把原因写在状态行，再点一次才真关 —— 免得手滑把排好的关机弄没了
+  // 关闭默认最小化到托盘：程序继续常驻（自动关机计时也继续走），托盘图标可恢复。
+  // 真正退出走关闭钮旁小箭头里的「退出应用」。
+  winClose.addEventListener('click', () => currentWindow.hide());
+
+  const openClosePop = (open) => {
+    closePop.hidden = !open;
+    winCloseMore.setAttribute('aria-expanded', String(open));
+  };
+  winCloseMore.addEventListener('click', () => openClosePop(closePop.hidden));
+  document.addEventListener('pointerdown', (e) => {
+    if (closePop.hidden) return;
+    const t = e.target;
+    if (!(t instanceof Element) || t.closest('.close-wrap')) return;
+    openClosePop(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !closePop.hidden) openClosePop(false);
+  });
+  // 自动关机计时中退出就等于计划作废（计时只在软件内守）。第一次点先拦下来，
+  // 切到那一页把原因写在状态行，再点一次才真退 —— 免得手滑把排好的关机弄没了
   let closeBlockedAt = 0;
-  winClose.addEventListener('click', () => {
+  appExitBtn.addEventListener('click', () => {
+    openClosePop(false);
     if (shutdownApi.blocksClose() && Date.now() - closeBlockedAt > 5000) {
       closeBlockedAt = Date.now();
       showTab('shutdown');
       shutdownApi.reportCloseBlocked();
       return;
     }
-    currentWindow.close();
+    window.__TAURI__.core.invoke('app_exit');
   });
 
   // 最大化 / 还原后换图标，拖动窗口改变尺寸时也会触发

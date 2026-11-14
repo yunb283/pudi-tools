@@ -238,7 +238,7 @@ function mock(cmd: string, args?: Args): unknown {
     case 'dm_snapshot_errors': return ERRORS;
     case 'dm_overview':
       return {
-        db_path: '%APPDATA%\\com.spritetools.seqtool\\diskmon.sqlite3', settings: SETTINGS,
+        db_path: '%APPDATA%\\puditools\\diskmon.sqlite3', settings: SETTINGS,
         volume: VOLUME, latest: SNAP[0], snapshot_count: SNAP.length, snapshots: SNAP,
         net_delta: Math.round(2.4 * GB), trend: TREND, pair: [11, 12],
         rankings: {
